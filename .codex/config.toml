@@ -1,0 +1,16 @@
+[mcp_servers.playwright]
+args = [
+    "-y",
+    "@playwright/mcp@latest",
+    "--headless",
+    "--isolated",
+    "--browser",
+    "chromium",
+]
+command = "npx"
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_CODE_EFFORT_LEVEL = "max"
