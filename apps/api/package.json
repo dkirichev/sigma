@@ -1,0 +1,17 @@
+{
+  "name": "@sigma/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sigma/api-contract": "workspace:*",
+    "@sigma/db": "workspace:*",
+    "@sigma/shared": "workspace:*"
+  }
+}

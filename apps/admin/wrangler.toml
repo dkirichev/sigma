@@ -1,0 +1,12 @@
+name = "sigma-admin"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[dev]
+port = 8790
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sigma"
+database_id = "00000000-0000-0000-0000-000000000000"

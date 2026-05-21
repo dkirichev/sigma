@@ -1,0 +1,17 @@
+name = "sigma-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[dev]
+port = 8787
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sigma"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/migrations"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "00000000000000000000000000000000"

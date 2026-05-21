@@ -1,0 +1,10 @@
+name = "sigma-assistant"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[dev]
+port = 8788
+
+# ANTHROPIC_API_KEY / AI Gateway creds are provided via .dev.vars locally and
+# `wrangler secret` in production — never committed.
