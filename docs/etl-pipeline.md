@@ -49,11 +49,11 @@ for how we got here and what each retired loader still covers.
 | `authorities` | 4,868 | deduped on ЕИК; 4,867 carry a `type` (Вид на възложителя) |
 | `tenders` | 139,718 | 128,070 from the tenders-export header rows + 11,648 **synthetic** for contract-only УНП |
 | `lots` | 195,220 | one per lot row |
-| `bidders` | 16,671 | deduped on contractor ЕИК; 12,923 valid 9/13-digit ЕИК; **3,660 consortia** (name-based) |
-| `contracts` | 189,588 | 190,428 admin rows − 840 with no contractor; **17,470 amended**; 4,455 awarded to a group |
+| `bidders` | 17,354 | keyed by ЕИК (valid) or **normalised name** (4,442 name-keyed); **3,716 consortia** |
+| `contracts` | 190,427 | 190,428 admin rows − 1 nameless; **17,470 amended**; value_flag: 172 value_suspect / 55 annex_suspect / 758 review |
 
-Money totals: **≈ 98.4 bn BGN + 6.67 bn EUR** (plus a handful of foreign-currency contracts). Currency
-is kept **per row** (BGN pre-2026, EUR from 2026) — see [Currency](#currency-not-one-unit).
+Canonical total **≈ 50.8 bn EUR** (`SUM(amount_eur)`, errors excluded; see [Data quality](#data-quality)).
+Currency is kept **per row** on `amount` (BGN pre-2026, EUR from 2026, 49 foreign) — see [Currency](#currency-not-one-unit).
 
 **Where it's stored.** The local Cloudflare D1 database `sigma`, on disk under
 `apps/api/.wrangler/state/v3/d1/` (miniflare SQLite, via `wrangler … --local`). The admin export
@@ -72,18 +72,21 @@ full pre-2020 coverage is ever needed, the retired portal CSV loader can add tho
 ## Currency (not one unit)
 
 Unlike the xlsx (all EUR), the admin export spans the **BGN→EUR switch**: 2020–2025 contracts are
-in **BGN**, 2026 in **EUR**, plus a few foreign-currency contracts (USD/CHF/GBP/…). `normalize`
-keeps each row's **native currency** — it does **not** coerce to one unit. For safe aggregation
-`normalize` also derives **`contracts.amount_bgn`** (EUR→BGN at the fixed 1 EUR = 1.95583 BGN; NULL
-for unconvertible foreign currencies) — so `SUM(amount_bgn)` is a clean cross-year total while
-`amount` stays the faithful native value. This corrects the earlier "storage unit is EUR" assumption
-in [core-scope.md](core-scope.md).
+in **BGN**, 2026 in **EUR**, plus 49 foreign-currency contracts (USD/CHF/GBP/TRY/SEK/CZK). `normalize`
+keeps each row's **native currency** on `amount`/`currency` (the faithful as-recorded value) and also
+derives the canonical **`contracts.amount_eur`** for safe aggregation: BGN→EUR at the fixed peg
+(÷ 1.95583), EUR as-is, and **foreign currencies at the ECB reference rate on the contract's signing
+date** (`fx_rates`, loaded by [`scripts/load-fx.mjs`](../scripts/load-fx.mjs) via frankfurter.app;
+`fx_converted = 1` marks those rows and `fx_rate` stores the applied rate on the row, so `amount` ×
+`fx_rate` = `amount_eur` is auditable without a join). So `SUM(amount_eur)` is a clean single-currency total.
+Display in лева is `amount_eur × 1.95583` (IA editorial principle #1). This corrects the earlier
+"storage unit is EUR" framing being absent in [core-scope.md](core-scope.md).
 
 ## Data quality
 
 The admin register carries a small number of **source** data-entry errors. They were investigated
 (May 2026) and are handled in `normalize-egov.sql` **non-destructively** — staging stays raw; the
-verdict (`value_flag`) and the clean amount (`amount_bgn`) are derived columns. See
+verdict (`value_flag`) and the clean amount (`amount_eur`) are derived columns. See
 [0007_data_quality.sql](../packages/db/migrations/0007_data_quality.sql).
 
 - **Value errors (~213 contracts, 0.12 % of rows but ~12 % of the naive total).** A signed or amended
@@ -92,7 +95,7 @@ verdict (`value_flag`) and the clean amount (`amount_bgn`) are derived columns. 
   open-data portal found the identical wrong values** (same ЦАИС source — 108/108 matched, none
   corrected) — so they are upstream errors, not a load artifact, and are **not recoverable**. Hence
   `value_flag`, never a fabricated correction:
-  - `value_suspect` — the signed value itself is ≥100× the estimate → **excluded** from `amount_bgn`.
+  - `value_suspect` — the signed value itself is ≥100× the estimate → **excluded** from `amount_eur`.
   - `annex_suspect` — an amendment pushed `current_value` ≥100× signing (or negative); the signing
     value is sane (matches the estimate) → **fall back to signing**, so the contract still counts
     (e.g. the ЕТ whose annex read 4.6 bn falls back to its 113 500 signing).
@@ -100,10 +103,12 @@ verdict (`value_flag`) and the clean amount (`amount_bgn`) are derived columns. 
 - **Recipient identity.** Bidders are keyed by ЕИК when valid (9/13 digits), else by **normalised
   name** — stopping the collapse where ~595 distinct withheld-ЕИК (`не се публикува`) contractors
   merged onto one node, and recovering 839 contracts whose contractor had a name but no ЕИК.
+- **Foreign currency.** The 49 USD/CHF/GBP/TRY/SEK/CZK contracts are converted to `amount_eur` at the
+  ECB reference rate on the **signing date** (`fx_converted = 1`); the raw `amount`/`currency` is kept.
 - **Minor** (negligible, surfaced not altered): 33 out-of-range dates, 187 zero-value, the 1 negative
   (resolved by the annex fallback), ~269 duplicate `(УНП, contract_number)` keys (mostly real multi-lot).
 
-Net canonical headline `SUM(amount_bgn)` (all currencies in BGN, errors excluded) ≈ **99.4 bn BGN**.
+Net canonical headline `SUM(amount_eur)` (every currency in EUR, errors excluded) ≈ **50.8 bn EUR**.
 
 ## Sources
 

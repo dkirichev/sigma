@@ -50,7 +50,7 @@ re-migrated when these resume — they just have no UI or scoring in the core.
   Needs the Търговски регистър joined on ЕИК — a separate ingest (see
   [KICKOFF](design/KICKOFF.md)). The `bidder_members` table, the `contract_participants`
   view and the `eik_normalized` join key all remain in the schema, unused by the core UI.
-  Money is attributed with **lens #1 only**: `SUM(contracts.amount_bgn)` grouped by `bidder_id`
+  Money is attributed with **lens #1 only**: `SUM(contracts.amount_eur)` grouped by `bidder_id`
   (a consortium is credited as the single awarded entity). The member-level lens #2
   activates with this layer — see the "Which sum to use" table under
   [data-ingestion.md → Consortia](data-ingestion.md#consortia-обединения--дззд).
@@ -71,10 +71,10 @@ few that remain (sector + a couple of minor contract fields).
 | Shows | Source / aggregation |
 | --- | --- |
 | Име | `authorities.name` |
-| Общо похарчено | `SUM(contracts.amount_bgn)` over contracts whose `tenders.authority_id` = this id |
+| Общо похарчено | `SUM(contracts.amount_eur)` over contracts whose `tenders.authority_id` = this id |
 | Брой договори | `COUNT(contracts)` via `tenders.authority_id` |
 | Какво купува (CPV mix) | `GROUP BY tenders.cpv_code` (readable CPV names need a dictionary †) |
-| Към кого (топ изпълнители) | `GROUP BY contracts.bidder_id`, `SUM(amount_bgn)` desc → `bidders.name` |
+| Към кого (топ изпълнители) | `GROUP BY contracts.bidder_id`, `SUM(amount_eur)` desc → `bidders.name` |
 | Процедури (mix) | `GROUP BY tenders.procedure_type` |
 | ЕС финансиране (дял) | share of `eu_funded` † |
 | Сектор | `sector` † |
@@ -85,7 +85,7 @@ few that remain (sector + a couple of minor contract fields).
 | Shows | Source / aggregation |
 | --- | --- |
 | Име / ЕИК | `bidders.name` (display-only) / `bidders.bulstat` + `eik_normalized` (key) |
-| Общо спечелено | `SUM(contracts.amount_bgn)` grouped by `bidder_id` (lens #1) |
+| Общо спечелено | `SUM(contracts.amount_eur)` grouped by `bidder_id` (lens #1) |
 | Брой договори | `COUNT(contracts)` |
 | От кои институции | `GROUP BY tenders.authority_id` → `authorities.name` |
 | Какво продава (CPV mix) | `GROUP BY tenders.cpv_code` |
@@ -116,7 +116,7 @@ few that remain (sector + a couple of minor contract fields).
 ### Lists & browser
 
 - **Authorities** / **Companies** lists — ranked tables; companies default to top
-  beneficiaries by `SUM(contracts.amount_bgn)`. Both rankable and filterable.
+  beneficiaries by `SUM(contracts.amount_eur)`. Both rankable and filterable.
 - **Contracts browser** — filtered list; filters are URL-encoded per the IA so any view is
   shareable: year (`signed_at`), sector †, CPV, procedure type, authority, company, value
   range, EU-funded †. Every aggregate elsewhere decomposes to a filtered view of this list.
@@ -124,7 +124,7 @@ few that remain (sector + a couple of minor contract fields).
 ### Flows (`/потоци`)
 
 Authority→company edges: `GROUP BY tenders.authority_id, contracts.bidder_id` →
-`SUM(amount_bgn)`, `COUNT(*)`; nodes drawn from `authorities` and `bidders`; top-N by amount,
+`SUM(amount_eur)`, `COUNT(*)`; nodes drawn from `authorities` and `bidders`; top-N by amount,
 with the same sector/year/value filters carried through. **No owner column** (that toggle is
 part of the parked layer).
 
@@ -144,7 +144,7 @@ propagates these directly — the admin export carries them per row, from `raw_e
 | Bidder count | `contracts.bids_received` | **done** |
 | EU-funded flag | `contracts.eu_funded` | **done** |
 | Contract kind (доставки / услуги / строителство) | `contracts.contract_kind` + `tenders.contract_kind` | **done** |
-| Signing & current value (separate) | `contracts.signing_value` / `current_value`; `amount` headline + `amount_bgn` canonical | **done** |
+| Signing & current value (separate) | `contracts.signing_value` / `current_value`; `amount` headline + `amount_eur` canonical | **done** |
 | Annex count | `contracts.annex_count` | **done** |
 | Contract number | `contracts.contract_number` | **done** |
 | Authority type | `authorities.type` | **done** — 4,867 / 4,868 typed (from Вид на възложителя) |
@@ -156,12 +156,13 @@ propagates these directly — the admin export carries them per row, from `raw_e
 So the core is buildable now. Only **sector** (a chip/filter) and a couple of minor contract fields
 remain — none blocking.
 
-**Money & data quality.** Sum the canonical **`contracts.amount_bgn`** (every currency already in BGN
-at the fixed 1.95583; `NULL` for the 172 value-error contracts and a few foreign currencies, so it is
-always safe to `SUM`) — not the raw native-currency `amount`, which is for display. Each contract
-also carries **`value_flag`** (`ok` / `review` / `annex_suspect` / `value_suspect`): the explorer
-should surface `value_suspect`/`annex_suspect` contracts as "anomalous value — under review" rather
-than hide them (they are prime scrutiny targets). Recipients with no valid ЕИК are keyed by name. See
+**Money & data quality.** Sum the canonical **`contracts.amount_eur`** (every currency already in EUR:
+BGN at the fixed ÷1.95583 peg, foreign at the ECB signing-date rate with `fx_converted = 1`; `NULL`
+only for the 172 value-error contracts, so it is always safe to `SUM`) — not the raw native-currency
+`amount`, which is for display (лева = `amount_eur × 1.95583`). Each contract also carries
+**`value_flag`** (`ok` / `review` / `annex_suspect` / `value_suspect`): the explorer should surface
+`value_suspect`/`annex_suspect` contracts as "anomalous value — under review" rather than hide them
+(they are prime scrutiny targets). Recipients with no valid ЕИК are keyed by name. See
 [etl-pipeline.md → Data quality](etl-pipeline.md#data-quality).
 
 ## What is not in v1
