@@ -15,6 +15,7 @@
     "lint": "prettier --check .",
     "format": "prettier --write .",
     "setup": "node scripts/setup.mjs",
+    "import": "node scripts/import.mjs",
     "bootstrap": "node scripts/bootstrap.mjs",
     "bootstrap:apply": "node scripts/bootstrap.mjs --apply",
     "deploy": "turbo run deploy",
