@@ -108,8 +108,20 @@ CREATE TABLE contracts (
   document_number  TEXT,                   -- Номер на документ
   published_at     TEXT,                   -- Публикуван на
   contract_subject TEXT,                   -- Предмет на договора (distinct from the procurement subject)
-  vat              TEXT,                   -- ДДС
-  sme              TEXT,                   -- изпълнителят е МСП (малко/средно предприятие)
+  eu_programme       TEXT,                 -- Европейска програма (operational programme name)
+  duration_days      INTEGER,              -- Срок на договора в дни
+  winner_size        TEXT,                 -- Размер на победителя (micro/small/medium/large)
+  contractor_country TEXT,                 -- Код на държавата на изпълнителя
+  bids_sme           INTEGER,              -- Брой оферти от МСП
+  bids_rejected      INTEGER,              -- Брой отстранени оферти
+  bids_non_eea       INTEGER,              -- Брой оферти извън ЕИП
+  subcontractor_eik  TEXT,                 -- ЕИК на подизпълнителя
+  subcontractor_name TEXT,                 -- Наименование на подизпълнителя
+  subcontract_value  REAL,                 -- Стойност, възложена на подизпълнител
+  eauction         INTEGER,                -- Електронен търг
+  framework        INTEGER,                -- Договор по рамково споразумение
+  accelerated      INTEGER,                -- Ускорена процедура
+  strategic        INTEGER,                -- Стратегическа поръчка
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -180,6 +192,39 @@ CREATE TABLE raw_egov_contracts (
   award_criteria   TEXT,                  -- Критерий за възлагане
   legal_basis      TEXT,                  -- Правно основание за откриване
   annex_count      INTEGER DEFAULT 0,     -- rolled up by derive-amendments.sql
+
+  -- full capture — every remaining admin Contracts header (see scripts/load-admin.mjs CATS.contracts)
+  tender_ext_id            TEXT,          -- ID на поръчката
+  procurement_currency     TEXT,          -- Валута на поръчката
+  joint_procurement        INTEGER,       -- Съвместно възлагане
+  central_purchasing       INTEGER,       -- възложена от централен орган за покупки
+  main_activity            TEXT,          -- Основна дейност (на възложителя)
+  notice_type              TEXT,          -- Вид обявление
+  contractor_country       TEXT,          -- Код на държавата на изпълнителя
+  winner_owner_nationality TEXT,          -- Националност на собственика на победителя
+  winner_size              TEXT,          -- Размер на победителя (micro/small/medium/large)
+  has_subcontractor        INTEGER,       -- Подизпълнител (да/не)
+  subcontractor_name       TEXT,          -- Наименование на подизпълнителя
+  subcontractor_eik        TEXT,          -- ЕИК на подизпълнителя
+  subcontract_share        TEXT,          -- Дял на поръчката, възложен на подизпълнител
+  subcontract_value        REAL,          -- Стойност, възложена на подизпълнител
+  eu_programme             TEXT,          -- Европейска програма (operational programme)
+  framework_notice         INTEGER,       -- Поръчка за Рамково споразумение
+  framework_contract       INTEGER,       -- Договор по рамково споразумение
+  related_to               TEXT,          -- Свързана с
+  dps_contract             INTEGER,       -- Договор по ДСП (динамична система за покупки)
+  accelerated              INTEGER,       -- Ускорена процедура
+  eauction                 INTEGER,       -- Електронен търг
+  strategic                INTEGER,       -- Стратегическа поръчка
+  outside_zop              INTEGER,       -- Договорът е извън приложното поле на ЗОП
+  exemption_legal_basis    TEXT,          -- Правно основание за изключение
+  bids_sme                 INTEGER,       -- Брой оферти от МСП
+  bids_rejected            INTEGER,       -- Брой отстранени оферти
+  bids_non_eea             INTEGER,       -- Брой оферти - извън ЕИП
+  duration_days            INTEGER,       -- Срок на договора в дни
+  non_award                INTEGER,       -- Невъзлагане
+  correction_number        TEXT,          -- Номер на поправката
+  ted_link                 TEXT,          -- Линк към публикацията в ТЕД
 
   -- enrichment tracking (vestigial under the admin base — always 0/NULL; kept for the portal feed)
   needs_enrichment   INTEGER NOT NULL DEFAULT 1,

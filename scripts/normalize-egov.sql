@@ -177,7 +177,11 @@ INSERT OR IGNORE INTO contracts
   (id, tender_id, bidder_id, amount, currency, signed_at,
    contract_number, signing_value, current_value, annex_count, eu_funded, bids_received,
    contract_kind, awarded_to_group, value_flag, amount_eur, fx_converted, fx_rate,
-   lot_id, document_number, published_at, contract_subject, vat, sme)
+   lot_id, document_number, published_at, contract_subject,
+   eu_programme, duration_days, winner_size, contractor_country,
+   bids_sme, bids_rejected, bids_non_eea,
+   subcontractor_eik, subcontractor_name, subcontract_value,
+   eauction, framework, accelerated, strategic)
 SELECT
   'c:' || x.id,
   't:' || x.unp,
@@ -208,8 +212,20 @@ SELECT
   x.document_number,
   x.published_at,
   x.contract_subject,
-  x.vat,
-  x.sme
+  x.eu_programme,
+  x.duration_days,
+  x.winner_size,
+  x.contractor_country,
+  x.bids_sme,
+  x.bids_rejected,
+  x.bids_non_eea,
+  x.subcontractor_eik,
+  x.subcontractor_name,
+  x.subcontract_value,
+  x.eauction,
+  x.framework_contract,
+  x.accelerated,
+  x.strategic
 FROM (
   SELECT y.*,
     CASE y.value_flag

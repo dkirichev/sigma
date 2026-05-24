@@ -110,8 +110,20 @@ export interface ContractRow {
   document_number: string | null;
   published_at: string | null;
   contract_subject: string | null;
-  vat: string | null;
-  sme: string | null;
+  eu_programme: string | null;
+  duration_days: number | null;
+  winner_size: string | null;
+  contractor_country: string | null;
+  bids_sme: number | null;
+  bids_rejected: number | null;
+  bids_non_eea: number | null;
+  subcontractor_eik: string | null;
+  subcontractor_name: string | null;
+  subcontract_value: number | null;
+  eauction: number | null;
+  framework: number | null;
+  accelerated: number | null;
+  strategic: number | null;
   created_at: string;
 }
 
