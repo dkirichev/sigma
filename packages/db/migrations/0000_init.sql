@@ -466,6 +466,19 @@ CREATE TABLE fx_rates (
   PRIMARY KEY (base_currency, rate_date)
 );
 
+-- NUTS region reference (Eurostat/НСИ classification for BG, stable) — 28 области (NUTS3) grouped into
+-- 6 NUTS2 + 2 NUTS1 macro-regions. Lets the UI label/aggregate the NUTS codes captured from OCDS
+-- (authorities.nuts / bidders.nuts) and fills authorities.region. Seeded by scripts/load-nuts.sql.
+-- (The full settlement-level ЕКАТТЕ classifier is deferred — no working open download today.)
+CREATE TABLE nuts_regions (
+  nuts3      TEXT PRIMARY KEY,             -- e.g. BG411
+  nuts3_name TEXT NOT NULL,                -- София (столица)
+  nuts2      TEXT NOT NULL,                -- BG41
+  nuts2_name TEXT NOT NULL,                -- Югозападен
+  nuts1      TEXT NOT NULL,                -- BG4
+  nuts1_name TEXT NOT NULL
+);
+
 -- "Data current as of" per feed — the latest real contract date covered + row count, recomputed
 -- by normalize-egov.sql. Surfaces the freshness date the UI needs and lets the OCDS go-forward
 -- catch-up verify the admin↔OCDS boundary (admin wins on overlap; see normalize-egov.sql step 5).

@@ -316,6 +316,11 @@ SELECT a.uic, a.owner_name, MAX(a.country), MAX(a.indent_type), MIN(a.source)
 FROM raw_tr_actual_owners a WHERE a.owner_name IS NOT NULL
 GROUP BY a.uic, a.owner_name;
 
+-- 8) Region from NUTS (nuts_regions, seeded by scripts/load-nuts.sql) — labels the OCDS-sourced NUTS
+--    codes and fills authorities.region (област) where empty. No-op if nuts_regions is unseeded.
+UPDATE authorities SET region = (SELECT n.nuts3_name FROM nuts_regions n WHERE n.nuts3 = authorities.nuts)
+WHERE authorities.nuts IS NOT NULL AND authorities.region IS NULL;
+
 -- Freshness boundary — "data current as of" per feed (latest real contract date + row count),
 -- for the UI and to verify the OCDS go-forward catch-up. Recomputed each run.
 DELETE FROM data_freshness;

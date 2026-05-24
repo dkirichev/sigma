@@ -51,6 +51,7 @@ run('wrangler', ['d1', 'migrations', 'apply', 'sigma', loc], apiDir); // 1. sche
 run('node', ['scripts/load-admin.mjs', '--apply', ...passthru]); //        2. staging
 execSql(resolve(root, 'scripts/derive-amendments.sql')); //                3. amendments rollup
 run('node', ['scripts/load-fx.mjs', '--apply', ...passthru]); //           4. fx rates
+execSql(resolve(root, 'scripts/load-nuts.sql')); //                        4b. NUTS region reference
 execSql(resolve(root, 'scripts/normalize-egov.sql')); //                   5. domain rebuild
 
 console.log('\n==> import complete.');
