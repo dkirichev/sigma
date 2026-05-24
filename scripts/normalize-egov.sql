@@ -293,6 +293,29 @@ UPDATE bidders SET
   address    = COALESCE(address,    (SELECT p.street_address FROM raw_ocds_parties p WHERE p.eik = bidders.eik_normalized AND p.street_address IS NOT NULL ORDER BY p.id DESC LIMIT 1))
 WHERE EXISTS (SELECT 1 FROM raw_ocds_parties p WHERE p.eik = bidders.eik_normalized);
 
+-- 7) Company master + ownership from the Trade Register (raw_tr_*, scripts/load-tr.mjs). Latest deed
+--    per ЕИК wins. Enriches bidders' seat/legal_form and (re)builds company_owners + beneficial_owners.
+--    No-op when raw_tr_* is empty (the open feed is daily deltas; coverage grows via the scheduled job).
+UPDATE bidders SET
+  legal_form   = COALESCE(legal_form,   (SELECT c.legal_form        FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized AND c.legal_form        IS NOT NULL ORDER BY c.file_date DESC, c.id DESC LIMIT 1)),
+  settlement   = COALESCE(settlement,   (SELECT c.settlement        FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized AND c.settlement        IS NOT NULL ORDER BY c.file_date DESC, c.id DESC LIMIT 1)),
+  ekatte       = COALESCE(ekatte,       (SELECT c.settlement_ekatte FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized AND c.settlement_ekatte IS NOT NULL ORDER BY c.file_date DESC, c.id DESC LIMIT 1)),
+  municipality = COALESCE(municipality, (SELECT c.municipality      FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized AND c.municipality      IS NOT NULL ORDER BY c.file_date DESC, c.id DESC LIMIT 1)),
+  address      = COALESCE(address,      (SELECT TRIM(COALESCE(c.street,'') || ' ' || COALESCE(c.street_number,'')) FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized AND c.street IS NOT NULL ORDER BY c.file_date DESC, c.id DESC LIMIT 1))
+WHERE EXISTS (SELECT 1 FROM raw_tr_companies c WHERE c.uic = bidders.eik_normalized);
+
+DELETE FROM company_owners;
+INSERT OR IGNORE INTO company_owners (company_eik, role, owner_name, owner_eik, indent_type, share_pct, country, source)
+SELECT o.uic, o.role, o.owner_name, MAX(o.owner_uic), MAX(o.indent_type), NULL, MAX(o.country), MIN(o.source)
+FROM raw_tr_owners o WHERE o.owner_name IS NOT NULL
+GROUP BY o.uic, o.role, o.owner_name;
+
+DELETE FROM beneficial_owners;
+INSERT OR IGNORE INTO beneficial_owners (company_eik, owner_name, country, indent_type, source)
+SELECT a.uic, a.owner_name, MAX(a.country), MAX(a.indent_type), MIN(a.source)
+FROM raw_tr_actual_owners a WHERE a.owner_name IS NOT NULL
+GROUP BY a.uic, a.owner_name;
+
 -- Freshness boundary — "data current as of" per feed (latest real contract date + row count),
 -- for the UI and to verify the OCDS go-forward catch-up. Recomputed each run.
 DELETE FROM data_freshness;

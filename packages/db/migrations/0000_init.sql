@@ -156,6 +156,33 @@ CREATE TABLE bidder_members (
   PRIMARY KEY (consortium_id, member_eik)
 );
 
+-- Company ownership (Търговски регистър, keyed by ЕИК) — partners/shareholders, sole owner, managers,
+-- representatives. Personal owners' IDs are HASHED at source (ЗМИП); we keep name + country only.
+-- owner_eik is set when the owner is itself a company (IndentType = UIC). Built by normalize-egov.sql
+-- from raw_tr_* staging (scripts/load-tr.mjs).
+CREATE TABLE company_owners (
+  company_eik TEXT NOT NULL,               -- the company (ЕИК)
+  role        TEXT NOT NULL,               -- 'partner' | 'sole_capital_owner' | 'manager' | 'representative'
+  owner_name  TEXT,
+  owner_eik   TEXT,                         -- owner's ЕИК when the owner is a company, else NULL
+  indent_type TEXT,                         -- EGN | UIC | BirthDate | …
+  share_pct   REAL,                         -- documented share if known, else NULL
+  country     TEXT,
+  source      TEXT NOT NULL,               -- 'tr:<file date>'
+  PRIMARY KEY (company_eik, role, owner_name)
+);
+
+-- Beneficial owners (действителни собственици, чл. 63 ЗМИП) from the Търговски регистър. Personal
+-- IDs hashed at source; name + country only.
+CREATE TABLE beneficial_owners (
+  company_eik TEXT NOT NULL,
+  owner_name  TEXT NOT NULL,
+  country     TEXT,
+  indent_type TEXT,
+  source      TEXT NOT NULL,
+  PRIMARY KEY (company_eik, owner_name)
+);
+
 -- ===================================================================================
 -- 2) STAGING — admin ЦАИС ЕОП export (data/Open_data_resources.zip), by scripts/load-admin.mjs.
 --    100% raw landing (source 'admin:<cat>:<year>'); all cleaning happens in normalize-egov.sql.
@@ -379,6 +406,53 @@ CREATE TABLE raw_ocds_parties (
   contact_phone  TEXT
 );
 
+-- Trade Register (Агенция по вписванията; data.egov.bg dataset 2df0c2af-…) — daily XML deltas, by
+-- scripts/load-tr.mjs. One company row per <Deed> (current state) + owner / beneficial-owner rows.
+-- Source 'tr:<file date>'; latest file_date wins on dedup. Personal IDs are hashed at source.
+CREATE TABLE raw_tr_companies (
+  id            INTEGER PRIMARY KEY,
+  source        TEXT NOT NULL,
+  fetched_at    TEXT NOT NULL,
+  file_date     TEXT,                        -- date of the daily file (latest wins)
+  deed_guid     TEXT,
+  uic           TEXT,                         -- ЕИК
+  company_name  TEXT,
+  legal_form    TEXT,                         -- EOOD / OOD / AD / ET / DZZD …
+  deed_status   TEXT,
+  subject_of_activity TEXT,                   -- предмет на дейност
+  nkid          TEXT,                         -- НКИД economic-activity code
+  country       TEXT,
+  district      TEXT, district_ekatte TEXT,
+  municipality  TEXT, municipality_ekatte TEXT,
+  settlement    TEXT, settlement_ekatte TEXT,
+  post_code     TEXT, street TEXT, street_number TEXT
+);
+CREATE TABLE raw_tr_owners (
+  id           INTEGER PRIMARY KEY,
+  source       TEXT NOT NULL,
+  fetched_at   TEXT NOT NULL,
+  file_date    TEXT,
+  uic          TEXT NOT NULL,               -- company ЕИК
+  role         TEXT NOT NULL,               -- partner | sole_capital_owner | manager | representative
+  owner_name   TEXT,
+  owner_indent TEXT,                         -- hashed EGN, or the UIC for company owners
+  indent_type  TEXT,                         -- EGN | UIC | BirthDate
+  owner_uic    TEXT,                         -- owner_indent when indent_type = UIC
+  country      TEXT,
+  legal_form   TEXT,
+  position     TEXT
+);
+CREATE TABLE raw_tr_actual_owners (
+  id          INTEGER PRIMARY KEY,
+  source      TEXT NOT NULL,
+  fetched_at  TEXT NOT NULL,
+  file_date   TEXT,
+  uic         TEXT NOT NULL,
+  owner_name  TEXT,
+  indent_type TEXT,
+  country     TEXT
+);
+
 -- ===================================================================================
 -- 3) REFERENCE — ECB euro reference rates for foreign-currency signing dates (scripts/load-fx.mjs)
 -- ===================================================================================
@@ -431,6 +505,12 @@ CREATE INDEX idx_egov_amend_contract ON raw_egov_amendments(unp, contract_number
 CREATE INDEX idx_egov_amend_source ON raw_egov_amendments(source);
 CREATE INDEX idx_ocds_parties_eik ON raw_ocds_parties(eik);
 CREATE INDEX idx_ocds_parties_source ON raw_ocds_parties(source);
+CREATE INDEX idx_tr_companies_uic ON raw_tr_companies(uic);
+CREATE INDEX idx_tr_owners_uic ON raw_tr_owners(uic);
+CREATE INDEX idx_tr_actual_owners_uic ON raw_tr_actual_owners(uic);
+CREATE INDEX idx_company_owners_company ON company_owners(company_eik);
+CREATE INDEX idx_company_owners_owner ON company_owners(owner_eik);
+CREATE INDEX idx_beneficial_owners_company ON beneficial_owners(company_eik);
 
 -- ===================================================================================
 -- 5) VIEWS — contract_participants (parked owner attribution; SUM-safe per company).
