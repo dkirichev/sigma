@@ -147,17 +147,15 @@ code, .mono {
   border-bottom: 1px solid var(--rule);
   background: var(--paper);
 }
+.site-header { position: relative; z-index: 20; }
 .site-header-inner {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 28px var(--gutter) 14px;
+  padding: 24px var(--gutter) 16px;
   display: flex;
-  align-items: baseline;
-  gap: var(--s-5);
+  align-items: center;
+  gap: var(--s-4) var(--s-5);
   flex-wrap: wrap;
-}
-@media (max-width: 600px) {
-  .site-header-inner { padding: 18px var(--gutter) 12px; gap: var(--s-3) var(--s-4); }
 }
 .site-header-inner > .brand { margin-right: auto; }
 .brand {
@@ -166,6 +164,7 @@ code, .mono {
   display: inline-flex;
   align-items: baseline;
   gap: var(--s-3);
+  min-width: 0;
 }
 .brand:hover { color: var(--ink); text-decoration: none; }
 .brand:visited { color: var(--ink); }
@@ -175,23 +174,27 @@ code, .mono {
   letter-spacing: 0.01em;
   color: var(--ink);
   font-weight: 400;
+  white-space: nowrap;
 }
 /* The pre-existing brand-sub tagline competes with the editorial mast tone */
 .brand-sub { display: none; }
 
+/* Right-side controls — search icon (always) + menu toggle (mobile only) */
+.site-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-5);
+  flex: 0 0 auto;
+}
+
 .site-nav {
   display: flex;
   gap: var(--s-6);
-  flex-wrap: wrap;
   font: 11px/1.3 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-mid);
-  align-items: baseline;
-  row-gap: var(--s-3);
-}
-@media (max-width: 760px) {
-  .site-nav { gap: var(--s-5) var(--s-4); row-gap: var(--s-3); }
+  align-items: center;
 }
 .site-nav a {
   text-decoration: none;
@@ -199,6 +202,7 @@ code, .mono {
   padding: 4px 0;
   border-bottom: 2px solid transparent;
   font-weight: 500;
+  white-space: nowrap;
 }
 .site-nav a:hover { color: var(--accent); }
 .site-nav a[aria-current="page"] {
@@ -206,7 +210,7 @@ code, .mono {
   border-bottom-color: var(--ink);
 }
 
-/* Search icon button — sits in the nav row, opens the drawer below the masthead */
+/* Search icon button — opens the search drawer below the masthead */
 .nav-search {
   background: transparent;
   border: 0;
@@ -220,12 +224,88 @@ code, .mono {
   line-height: 0;
   border-radius: 0;
   font: inherit;
-  align-self: center;
 }
 .nav-search:hover,
 .nav-search[aria-expanded="true"] { color: var(--accent); }
 .nav-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .nav-search svg { display: block; width: 18px; height: 18px; }
+
+/* Menu toggle — hidden on desktop; revealed when the nav collapses */
+.nav-toggle {
+  display: none;
+  align-items: center;
+  gap: var(--s-2);
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  margin: 0;
+  color: var(--ink-mid);
+  cursor: pointer;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.nav-toggle:hover,
+.nav-toggle[aria-expanded="true"] { color: var(--accent); }
+.nav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.nav-toggle-box { position: relative; display: inline-block; width: 18px; height: 11px; }
+.nav-toggle-box span {
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 1.75px;
+  background: currentColor;
+  transition: transform 0.22s ease, top 0.22s ease;
+}
+.nav-toggle-box span:nth-child(1) { top: 1px; }
+.nav-toggle-box span:nth-child(2) { top: 8px; }
+.nav-toggle[aria-expanded="true"] .nav-toggle-box span:nth-child(1) { top: 4px; transform: rotate(45deg); }
+.nav-toggle[aria-expanded="true"] .nav-toggle-box span:nth-child(2) { top: 4px; transform: rotate(-45deg); }
+
+/* ≤960px — collapse the inline nav into a full-width slide-down drawer.
+   Six mono nav items get tight before this; the menu toggle takes over. */
+@media (max-width: 960px) {
+  .site-header-inner { padding: 18px var(--gutter) 16px; }
+  .nav-toggle { display: inline-flex; }
+  .site-nav {
+    order: 3;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.28s ease, opacity 0.2s ease, margin-top 0.28s ease;
+  }
+  .site-nav.is-open {
+    max-height: 75vh;
+    opacity: 1;
+    margin-top: var(--s-4);
+    overflow-y: auto;
+    border-top: 1px solid var(--rule);
+  }
+  .site-nav a {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: 15px var(--s-1);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .site-nav a[aria-current="page"] {
+    color: var(--accent);
+    border-bottom-color: var(--rule-soft);
+  }
+  .site-nav a[aria-current="page"]::before {
+    content: "›";
+    color: var(--accent);
+    font: 400 16px/1 var(--font-serif);
+  }
+}
 
 /* Search drawer — drops below masthead on icon click */
 .search-drawer {
@@ -337,14 +417,17 @@ main.narrow { max-width: var(--max-narrow); }
 .page-header { margin: 0 0 var(--s-7); }
 .page-header .kicker {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
+  max-width: 100%;
   color: var(--accent);
-  font: 11px/1 var(--font-mono);
+  font: 11px/1.3 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 500;
   margin: 0 0 var(--s-4);
+  overflow-wrap: anywhere;
 }
 .page-header .kicker::before {
   content: "";
@@ -970,6 +1053,8 @@ details.row .body .signal .why { color: var(--ink-mid); }
   border-top: 0;
   padding-top: 0;
   text-transform: none;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* Pagination footer */
@@ -1000,6 +1085,123 @@ details.row .body .signal .why { color: var(--ink-mid); }
   thead th, tbody td { padding-right: var(--s-3); }
   thead th:first-child, tbody td:first-child { padding-left: var(--s-2); }
   .rank, td.rank { width: 24px; padding-right: var(--s-2) !important; }
+}
+
+/* ===== Phones: data tables reflow into stacked cards (annotated by site.js) =====
+   Every column becomes a labeled line, so no data is hidden and the row never
+   needs horizontal scrolling. Two shapes: numeric "cards" and text "prose". */
+@media (max-width: 560px) {
+  /* Bring back the column we hide on tablets — as a labeled line, it fits fine */
+  .tbl-cards .col-secondary { display: flex; }
+  .tbl-prose .col-secondary { display: block; }
+
+  .tbl-cards, .tbl-prose { overflow: visible; border-top: 0; border-bottom: 0; }
+  .tbl-cards table, .tbl-cards thead, .tbl-cards tbody, .tbl-cards tr, .tbl-cards td,
+  .tbl-prose table, .tbl-prose thead, .tbl-prose tbody, .tbl-prose tr, .tbl-prose td {
+    display: block;
+    width: auto;
+  }
+  /* Keep headers for assistive tech, hide them visually */
+  .tbl-cards thead, .tbl-prose thead {
+    position: absolute; width: 1px; height: 1px;
+    margin: -1px; padding: 0; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* The card shell */
+  .tbl-cards tr, .tbl-prose tr {
+    position: relative;
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--ink);
+    padding: 14px 16px;
+    margin: 0 0 10px;
+    background: var(--paper);
+  }
+  .tbl-cards tbody tr:hover td, .tbl-prose tbody tr:hover td { background: transparent; }
+
+  /* Numeric rows: label left, value right. flex-wrap lets a long text value
+     drop to its own line instead of pushing the card past the viewport. */
+  .tbl-cards td {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 6px 0 0;
+    margin-top: 6px;
+    border: 0;
+    border-top: 1px dotted var(--rule-soft);
+    min-width: 0;
+    text-align: right;
+    font-size: 13px;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .tbl-cards td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 52%;
+    text-align: left;
+    font: 500 10px/1.5 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+
+  /* Title cell: full-width heading, no label, leaves room for the rank badge */
+  .tbl-cards td.cell-title {
+    display: block;
+    margin: 0;
+    padding: 0 44px 10px 0;
+    border: 0;
+    text-align: left;
+    font-family: var(--font-serif);
+    font-size: 17px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .tbl-cards td.cell-title { overflow-wrap: anywhere; }
+  .tbl-cards td.cell-title::before { content: none; }
+  .tbl-cards td.cell-title a { color: var(--ink); font-weight: 400; }
+  .tbl-cards td.cell-title .small,
+  .tbl-cards td.cell-title .small.muted { display: block; margin-top: 3px; }
+
+  /* Rank → small badge in the card's top-right corner */
+  .tbl-cards td.cell-rank {
+    position: absolute;
+    top: 13px; right: 14px;
+    margin: 0; padding: 0; border: 0;
+    display: block; text-align: right;
+    font: 500 11px/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+  }
+  .tbl-cards td.cell-rank::before { content: '№'; opacity: 0.55; }
+
+  /* Share bars stay readable when right-aligned */
+  .tbl-cards .share { justify-content: flex-end; }
+  .tbl-cards .money { text-align: right; }
+
+  /* Prose rows: label stacked above full-width text */
+  .tbl-prose td {
+    padding: 10px 0 0;
+    margin: 0;
+    border: 0;
+    text-align: left;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  .tbl-prose td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font: 500 10px/1.5 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .tbl-prose td:first-child { font-weight: 600; }
 }
 
 /* List controls row — sort/count strip above tables */
@@ -1155,7 +1357,37 @@ details.row .body .signal .why { color: var(--ink-mid); }
 }
 
 /* Flow diagram tokens */
+/* Scroll frame — keeps the Sankey legible on narrow screens by letting it
+   keep a minimum width and scroll horizontally instead of shrinking the
+   labels into illegibility. On wide screens the SVG just fills the column. */
+.flow-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* faint edge fades hint that there is more to scroll */
+  scrollbar-width: thin;
+}
 .flow-svg { width: 100%; height: auto; display: block; font: 13px var(--font-sans); }
+
+/* Mobile scroll affordance — hidden on wide viewports */
+.flow-scroll-hint {
+  display: none;
+  margin: 0 0 var(--s-3);
+  font: 500 10.5px/1.4 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+@media (max-width: 760px) {
+  .flow-scroll .flow-svg { min-width: 760px; }
+  .flow-scroll-hint { display: block; }
+}
+@media (max-width: 600px) {
+  /* Stack the filter controls into a clean vertical list on phones */
+  .flow-controls { flex-direction: column; align-items: stretch; gap: var(--s-3); }
+  .flow-controls label { justify-content: space-between; width: 100%; }
+  .flow-controls select { flex: 0 0 auto; min-width: 0; max-width: 60%; }
+}
 .flow-svg .node { fill: var(--ink); }
 .flow-svg .node.authority { fill: var(--ink); }
 .flow-svg .node.company   { fill: var(--ink-mid); }
@@ -1291,6 +1523,30 @@ details.row .body .signal .why { color: var(--ink-mid); }
 /* JS visibility helpers */
 .hidden { display: none !important; }
 
+/* =========== Small-screen hardening ===========
+   Long Bulgarian entity names should wrap rather than push the page wide;
+   oversized serif numerics and section padding tighten up on phones. */
+
+/* Let long names/links break instead of forcing horizontal overflow */
+tbody td, .muni-grid a, .linklist li, .tile h3 { overflow-wrap: break-word; }
+
+@media (max-width: 600px) {
+  /* Totals + stat numerics: dense screens can't carry 36–40px serif figures */
+  .totals .cell { padding: var(--s-5) var(--s-4) var(--s-5) 0; }
+  .totals .cell + .cell { padding-left: var(--s-4); }
+  .totals .num { font-size: 28px; }
+  .stat .num { font-size: 32px; }
+
+  /* Section rhythm: trim the big top margins so content starts sooner */
+  .section { margin-top: var(--s-6); }
+  main { padding-top: var(--s-6); }
+}
+
+@media (max-width: 460px) {
+  .totals { grid-template-columns: 1fr 1fr; }
+  .totals .num { font-size: 24px; }
+}
+
 
     /* ---- SPA router ---- */
     .page { display: none; }
@@ -1379,6 +1635,12 @@ details.row .body .signal .why { color: var(--ink-mid); }
 
     .gap-table th, .gap-table td { vertical-align: top; }
     .gap-table .mono { white-space: nowrap; }
+    /* On narrow screens let long field identifiers wrap instead of forcing
+       the page wider — both in the table and inline in body prose. */
+    @media (max-width: 760px) {
+      .gap-table .mono { white-space: normal; overflow-wrap: anywhere; }
+      p .mono, dd .mono, li .mono, .src { overflow-wrap: anywhere; word-break: break-word; }
+    }
     .gap-table tr.has td { background: #fbfdf8; }
     .gap-table tr.gap td { background: #fff8e1; }
     .gap-table tr.gap td:first-child { box-shadow: inset 4px 0 0 #c69b00; }
@@ -1571,17 +1833,23 @@ details.row .body .signal .why { color: var(--ink-mid); }
         <span class="brand-mark">Сигма</span>
         <span class="brand-sub">Платформа за прозрачни възлагания</span>
       </a>
-      <nav class="site-nav" aria-label="Главна навигация">
+      <nav class="site-nav" id="siteNav" aria-label="Главна навигация">
         <a href="#home" data-page="home">Начало</a>
         <a href="#authorities" data-page="authorities">Институции</a>
         <a href="#companies" data-page="companies">Компании</a>
         <a href="#contracts" data-page="contracts">Договори</a>
         <a href="#flows" data-page="flows">Потоци</a>
         <a href="#methodology" data-page="methodology">Методология</a>
+      </nav>
+      <div class="site-actions">
         <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
         </button>
-      </nav>
+        <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle aria-expanded="false" aria-controls="siteNav">
+          <span class="nav-toggle-box" aria-hidden="true"><span></span><span></span></span>
+          <span class="nav-toggle-text">Меню</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -1661,6 +1929,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
         Компании, наредени по обща стойност на спечелените договори, 2020–2026. Обединенията
         (ДЗЗД/консорциуми) се броят като един изпълнител. <a href="#companies" data-page="companies">Виж пълния списък →</a>
       </p>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -1744,6 +2013,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
 
     <section class="section" aria-labelledby="how">
@@ -2889,7 +3159,9 @@ details.row .body .signal .why { color: var(--ink-mid); }
       стойности са в таблицата по-долу.
     </div>
 
-    <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 600" role="img" aria-label="Поток на средства от институции към компании">
+    <p class="flow-scroll-hint">Плъзни хоризонтално, за да видиш цялата схема →</p>
+    <div class="flow-scroll">
+    <svg class="flow-svg" id="flowSvg" viewBox="-150 -6 990 614" role="img" aria-label="Поток на средства от институции към компании">
       <!-- Column headers -->
       <text x="135" y="12" text-anchor="end" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Институции</text>
       <text x="565" y="12" class="cap" style="font-size:11px; font-weight:700; fill: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Компании</text>
@@ -3045,6 +3317,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
       </g>
 
     </svg>
+    </div>
 
     <div class="flow-tooltip">
       <strong>Прочит на тази картина:</strong>
@@ -3118,6 +3391,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
       <p class="section-hint">
         Най-големите потоци за периода 2020–2026 (всички сектори). Числата са в милиони евро.
       </p>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -3201,6 +3475,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
 
   </main>
@@ -3636,6 +3911,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
             Кои полета са налични, кои са частични и кои липсват напълно. Частичните полета се
             показват само за записите, за които има данни — никога като измислена стойност.
           </p>
+          <div class="table-wrap">
           <table class="gap-table">
             <thead>
               <tr>
@@ -3750,6 +4026,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
               </tr>
             </tbody>
           </table>
+          </div>
         </section>
 
         <section class="section" aria-labelledby="parked">
@@ -3887,6 +4164,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
         Подредени по обща сума, спечелена от Столична община, 2020–2026. Колоната
         „Дял" показва каква част от общите 1,09 млрд. € отива към всеки изпълнител.
       </p>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -3954,6 +4232,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
 
     <div class="two-col">
@@ -4030,6 +4309,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
         <a href="#contracts" data-page="contracts">Виж всички / филтрирай / свали като CSV →</a>
       </p>
 
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -4092,6 +4372,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div class="paging">
         <span>Показани 6 от 2 130 (най-скорошни)</span>
@@ -4147,6 +4428,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
       <p class="section-hint">
         Институции, наредени по сума, заплатена на „Софарма Трейдинг" АД.
       </p>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -4205,6 +4487,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
 
     <div class="two-col">
@@ -4266,6 +4549,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
       <h2 id="latest">Най-големи договори</h2>
       <p class="section-hint">7 от 3 121 договора, подредени по стойност. <a href="#contracts" data-page="contracts">Виж всички / филтрирай / свали като CSV →</a></p>
 
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -4336,6 +4620,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
       <div class="paging">
         <span>Показани 7 от 3 121 (по стойност)</span>
         <div class="ctrl">
@@ -4521,6 +4806,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
         една за участък от АМ „Хемус", „Тракия", „Марица" и „Струма". В данните 5 от 6 лота имат
         сключен договор. Този договор е лотът за АМ „Тракия".
       </p>
+      <div class="table-wrap">
       <table class="lot-table">
         <thead>
           <tr>
@@ -4576,6 +4862,7 @@ details.row .body .signal .why { color: var(--ink-mid); }
           </tr>
         </tbody>
       </table>
+      </div>
       <p class="small muted" style="margin-top:8px;">
         Прогнозна стойност на всичките 6 лота: <strong>366 млн. €</strong>; сключени договори (5 от 6):
         <strong>≈296 млн. €</strong> при подписване. Връзката договор↔лот в данните е приблизителна —
@@ -5016,6 +5303,94 @@ details.row .body .signal .why { color: var(--ink-mid); }
     if (drawer.contains(e.target) || toggle.contains(e.target)) return;
     close();
   });
+})();
+
+/* Masthead menu — collapses the nav into a slide-down drawer ≤860px */
+(() => {
+  const toggle = document.querySelector('[data-nav-toggle]');
+  const nav = document.getElementById('siteNav');
+  if (!toggle || !nav) return;
+
+  const isOpen = () => nav.classList.contains('is-open');
+
+  const open = () => {
+    nav.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+  };
+  const close = () => {
+    nav.classList.remove('is-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    isOpen() ? close() : open();
+  });
+
+  // Choosing a destination closes the menu.
+  nav.addEventListener('click', (e) => {
+    if (e.target.closest('a')) close();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) {
+      close();
+      toggle.focus();
+    }
+  });
+
+  // Returning to the desktop layout clears any open state.
+  const mq = window.matchMedia('(min-width: 961px)');
+  const onChange = (e) => { if (e.matches) close(); };
+  mq.addEventListener ? mq.addEventListener('change', onChange) : mq.addListener(onChange);
+})();
+
+/* Phones: reflow wide data tables (.table-wrap) into stacked label/value cards.
+   Each <td> is tagged with its column header so the card can show every field —
+   no hidden columns, no sideways scrolling. The actual block layout lives in
+   styles.css behind @media (max-width: 560px); this only annotates the markup. */
+(() => {
+  const enhance = (scope) => {
+    (scope || document).querySelectorAll('.table-wrap table').forEach((table) => {
+      if (table.dataset.cards) return; // idempotent — already annotated
+      const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+      if (!heads.length) return;
+
+      // Prose tables (e.g. the methodology field/source comparison) carry long
+      // text, not metrics — they get a different card shape than numeric tables.
+      const isProse = !table.querySelector('tbody td.rank, tbody td.num, tbody td.money');
+      const wrap = table.closest('.table-wrap');
+      if (wrap) wrap.classList.add(isProse ? 'tbl-prose' : 'tbl-cards');
+
+      table.querySelectorAll('tbody tr').forEach((tr) => {
+        const cells = [...tr.children];
+        cells.forEach((td, i) => { if (heads[i]) td.setAttribute('data-label', heads[i]); });
+        if (isProse) return;
+        // Title = the entity cell (prefer the linked one); rank → corner badge.
+        let title = cells.find((td) => td.querySelector('a')) ||
+                    cells.find((td) => !td.classList.contains('rank') &&
+                                       !td.classList.contains('num') &&
+                                       !td.classList.contains('money'));
+        if (title) title.classList.add('cell-title');
+        cells.forEach((td) => { if (td.classList.contains('rank')) td.classList.add('cell-rank'); });
+      });
+      table.dataset.cards = '1';
+    });
+  };
+
+  const run = () => enhance(document);
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
+
+  // Single-file SPA build swaps page content client-side — re-annotate new tables.
+  if (window.MutationObserver) {
+    let queued = false;
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; run(); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
 })();
 </script>
 </body>

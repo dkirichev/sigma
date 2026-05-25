@@ -31,17 +31,23 @@
         <span class="brand-mark">Сигма</span>
         <span class="brand-sub">Платформа за прозрачни възлагания</span>
       </a>
-      <nav class="site-nav" aria-label="Главна навигация">
+      <nav class="site-nav" id="siteNav" aria-label="Главна навигация">
         <a href="index.html">Начало</a>
         <a href="authorities.html">Институции</a>
         <a href="companies.html">Компании</a>
         <a href="contracts.html" aria-current="page">Договори</a>
         <a href="flows.html">Потоци</a>
         <a href="methodology.html">Методология</a>
+      </nav>
+      <div class="site-actions">
         <button class="nav-search" type="button" aria-label="Търсене" data-search-toggle aria-expanded="false" aria-controls="searchDrawer">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="15.4" y1="15.4" x2="20" y2="20" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
         </button>
-      </nav>
+        <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle aria-expanded="false" aria-controls="siteNav">
+          <span class="nav-toggle-box" aria-hidden="true"><span></span><span></span></span>
+          <span class="nav-toggle-text">Меню</span>
+        </button>
+      </div>
     </div>
   </header>
 
