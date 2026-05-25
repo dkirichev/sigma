@@ -19,9 +19,9 @@ const PAGES = [
   { slug: "flows",         file: "flows.html",        title: "Потоци на пари — Сигма",                   nav: "Потоци" },
   { slug: "methodology",   file: "methodology.html",  title: "Методология и речник — Сигма",             nav: "Методология" },
   // Detail/list/search pages — addressable but not in the top nav.
-  { slug: "authority",     file: "authority.html",    title: "Община Благоевград — Сигма",               nav: null },
-  { slug: "company",       file: "company.html",      title: "ГБС Инфраструктурно строителство АД — Сигма", nav: null },
-  { slug: "contract",      file: "contract.html",     title: "Инженеринг АМ „Хемус“ Лот 6 — Сигма",      nav: null },
+  { slug: "authority",     file: "authority.html",    title: "Столична община — Сигма",                  nav: null },
+  { slug: "company",       file: "company.html",      title: "Софарма Трейдинг АД — Сигма",              nav: null },
+  { slug: "contract",      file: "contract.html",     title: "Поддържане на АМ „Тракия“ — Сигма",        nav: null },
   { slug: "search",        file: "search.html",       title: "Търсене — Сигма",                          nav: null },
 ];
 
@@ -160,7 +160,7 @@ ${navLinks}
 
 const siteFooter = `  <footer class="site-footer" role="contentinfo">
     <div class="site-footer-inner">
-      <span>Източник: АОП · 2020–2024 · обновени 31.12.2024</span>
+      <span>Източник: АОП / ЦАИС ЕОП · 2020–2026 · обновени 22.05.2026</span>
       <a href="#methodology" data-page="methodology">Методология</a>
     </div>
   </footer>`;
