@@ -16,6 +16,9 @@ coverage/
 .wrangler/
 .dev.vars
 wrangler.local.toml
+# rendered by scripts/wrangler-render.mjs (committed wrangler.* hold zero-UUID dummies)
+apps/*/wrangler.deploy.toml
+apps/*/wrangler.deploy.jsonc
 
 # Env
 .env

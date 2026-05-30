@@ -6,7 +6,9 @@ The v1 deploy set is two workers sharing one D1: **`sigma`** (the SSR explorer �
 
 The explorer reads D1 directly; the ETL writes to the **same** D1. Locally they share one miniflare
 D1 via the vite `persistState` path; in production they share it by binding the **same
-`database_id`** — so the IDs below must match across the configs.
+`database_id`** — but the committed `wrangler.*` files hold zero-UUID dummies (for local dev), and
+the real IDs come from env vars at deploy time so the repo stays reusable across CF accounts (see
+step 1 below).
 
 ## 0. Prerequisites (one-time)
 
@@ -17,9 +19,10 @@ D1 via the vite `persistState` path; in production they share it by binding the 
     tag** (cut a release). No long-lived credential on any developer machine (per AGENTS.md).
 
 > **What CI does vs. what's one-time manual.** CI only **deploys** (`wrangler deploy`). It cannot run
-> steps 1–2 below: `bootstrap:apply` produces resource IDs that must be pasted into the configs
-> (chicken-and-egg), and the initial data load needs the gitignored `data/` files. Do steps 1–2
-> once, locally; thereafter CI deploys on each tag and the `sigma-etl` cron keeps the data fresh.
+> steps 1–2 below: `bootstrap:apply` produces resource IDs that must be captured into env vars / repo
+> secrets (chicken-and-egg — CI needs them to deploy), and the initial data load needs the gitignored
+> `data/` files. Do steps 1–2 once, locally; thereafter CI deploys on each tag and the `sigma-etl`
+> cron keeps the data fresh.
   - **Local:** `pnpm exec wrangler login`, or export the same two env vars.
 
 ### Minimal API-token scopes
@@ -34,14 +37,20 @@ Worker — see "Access scoping" below): Workers Scripts **Edit**, D1 **Edit**, W
 pnpm bootstrap:apply   # creates D1 "sigma", KV "CACHE", R2 "sigma-raw"
 ```
 
-Copy the printed **D1 `database_id`** and **KV namespace id** into:
+Capture the printed **D1 `database_id`** and **KV namespace id** and set them as env vars — **not**
+in the committed `wrangler.*` files, which keep zero-UUID dummies that local dev (miniflare) uses
+unchanged. The deploy script renders a sibling `wrangler.deploy.<ext>` with the real values via
+[scripts/wrangler-render.mjs](../scripts/wrangler-render.mjs).
 
-- `apps/web/wrangler.jsonc` — `d1_databases[0].database_id`, `kv_namespaces[0].id`
-- `apps/etl/wrangler.toml` — `[[d1_databases]] database_id`
-- `apps/api/wrangler.toml` — (only if you also deploy the API)
+- **Local deploy:** `cp .env.example .env.local`, fill in `SIGMA_D1_ID` and `SIGMA_KV_CACHE_ID`,
+  then `set -a; source .env.local; set +a` before `pnpm deploy`.
+- **CI deploy:** add `SIGMA_D1_ID` and `SIGMA_KV_CACHE_ID` as repo secrets alongside
+  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`; [deploy.yml](../.github/workflows/deploy.yml)
+  already wires them through.
 
 > The D1 `database_id` **must be identical** in `web` and `etl` so the explorer reads what the refresh
-> writes. These IDs are not secrets; commit them.
+> writes — a single `SIGMA_D1_ID` env var feeds both. To deploy into another Cloudflare account, just
+> set different env vars; no file edit needed.
 
 ## 2. Load the data into the remote D1
 

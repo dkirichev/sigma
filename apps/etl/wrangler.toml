@@ -13,6 +13,8 @@ fallthrough = true
 [dev]
 port = 8789
 
+# `database_id` is a zero-UUID placeholder for local dev (miniflare). `pnpm --filter @sigma/etl run
+# deploy` substitutes SIGMA_D1_ID into wrangler.deploy.toml via scripts/wrangler-render.mjs.
 [[d1_databases]]
 binding = "DB"
 database_name = "sigma"

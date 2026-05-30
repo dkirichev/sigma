@@ -6,6 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 [dev]
 port = 8790
 
+# `database_id` is a zero-UUID placeholder for local dev (miniflare). Deploy substitutes SIGMA_D1_ID
+# via scripts/wrangler-render.mjs (see docs/deploy.md).
 [[d1_databases]]
 binding = "DB"
 database_name = "sigma"

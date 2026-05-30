@@ -28,5 +28,11 @@ for (const r of resources) {
 }
 
 if (!apply) {
-  console.log('\nAfter creating, copy the printed IDs into each apps/*/wrangler.toml.');
+  console.log(
+    '\nAfter creating, capture the printed IDs and set them as env vars (NOT in the committed' +
+      '\nwrangler files, which keep zero-UUID dummies for local dev):' +
+      '\n  SIGMA_D1_ID=<d1 database_id>' +
+      '\n  SIGMA_KV_CACHE_ID=<kv namespace id>' +
+      '\nFor local deploy, put them in .env.local; for CI, set them as repo secrets. See docs/deploy.md.',
+  );
 }

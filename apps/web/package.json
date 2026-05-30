@@ -7,7 +7,7 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "preview": "react-router build && vite preview",
-    "deploy": "react-router build && wrangler deploy",
+    "deploy": "node ../../scripts/wrangler-render.mjs wrangler.jsonc && react-router build && wrangler deploy --config wrangler.deploy.jsonc",
     "typecheck": "wrangler types && react-router typegen && tsc -b",
     "cf-typegen": "wrangler types"
   },
