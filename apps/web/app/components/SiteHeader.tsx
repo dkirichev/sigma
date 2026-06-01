@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { NavLink } from 'react-router';
+import { Link, NavLink, useSearchParams } from 'react-router';
 
 const NAV = [
   { to: '/', label: 'Начало', end: true },
@@ -17,6 +17,9 @@ const PLACEHOLDER = 'Институция, компания, ЕИК или № �
 // strict CSP needs no script allowance beyond the framework nonce. SSR renders both closed; the
 // handlers wire up on hydration.
 export function SiteHeader() {
+  const [searchParams] = useSearchParams();
+  // Prefill from the active query so reopening search on a results page shows it.
+  const activeQuery = searchParams.get('q') ?? '';
   const [searchOpen, setSearchOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const drawerId = useId();
@@ -69,10 +72,10 @@ export function SiteHeader() {
     <>
       <header className="site-header" role="banner">
         <div className="site-header-inner">
-          <NavLink className="brand" to="/" aria-label="Сигма — начална страница">
+          <Link className="brand" to="/" aria-label="Сигма — начална страница">
             <span className="brand-mark">Сигма</span>
             <span className="brand-sub">Платформа за прозрачни възлагания</span>
-          </NavLink>
+          </Link>
           <nav
             className={`site-nav${navOpen ? ' is-open' : ''}`}
             id={navId}
@@ -138,14 +141,28 @@ export function SiteHeader() {
         id={drawerId}
         inert={!searchOpen}
       >
-        <form className="search-drawer-form" role="search" action="/search" method="get">
+        <form
+          className="search-drawer-form"
+          role="search"
+          action="/search"
+          method="get"
+          onSubmit={(e) => {
+            // An empty/whitespace query shouldn't navigate to /search?q= (which then claims matches).
+            if (!inputRef.current?.value.trim()) {
+              e.preventDefault();
+              inputRef.current?.focus();
+            }
+          }}
+        >
           <span className="search-drawer-prompt" aria-hidden="true">
             ›
           </span>
           <input
+            key={activeQuery}
             ref={inputRef}
             type="search"
             name="q"
+            defaultValue={activeQuery}
             placeholder={PLACEHOLDER}
             aria-label="Търсене"
             autoComplete="off"
