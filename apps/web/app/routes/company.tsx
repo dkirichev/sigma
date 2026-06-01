@@ -91,6 +91,70 @@ export default function Company({ loaderData }: Route.ComponentProps) {
           ]}
         />
 
+        {/* Consortium membership. Shown only when the source row gave us something to break out
+            (a `;`-list or the rare free-text dump). Plain companies and one-name "ИНТЕРБОЛГАРСТРОЙ
+            ДЗЗД"-style rows skip the section — the kind=обединение badge above already says it. */}
+        {(c.participants.length > 0 || c.membershipNote) && (
+          <Section
+            id="participants"
+            title={
+              c.participants.length > 0
+                ? `Участници в обединението (${count(c.participants.length)})`
+                : 'Описание на обединението'
+            }
+            hint={
+              c.participants.length > 0
+                ? 'Имена от описанието на договора в АОП. ЕИК на отделните участници и връзки към техните профили ще се добавят след свързване с Търговския регистър — до тогава сумите се водят на ниво обединение.'
+                : 'Източникът съдържа свободен текст вместо структуриран списък участници. Запазваме описанието както е в обявата.'
+            }
+          >
+            {c.participants.length > 0 ? (
+              <div className="table-wrap tbl-cards">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Участник</th>
+                      <th scope="col">Идентификация</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {c.participants.map((p, i) => (
+                      <tr key={`${p.name}-${i}`}>
+                        <td className="rank cell-rank" data-label="#">
+                          {i + 1}
+                        </td>
+                        <td className="cell-title" data-label="Участник">
+                          {p.resolvedSlug ? <Link to={`/companies/${p.resolvedSlug}`}>{p.name}</Link> : p.name}
+                        </td>
+                        <td data-label="Идентификация">
+                          {p.eik ? (
+                            <span className="mono">ЕИК {p.eik}</span>
+                          ) : (
+                            <span className="muted small">ЕИК неустановен</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <blockquote
+                style={{
+                  margin: 0,
+                  padding: 'var(--s-3) var(--s-4)',
+                  borderLeft: '3px solid var(--rule)',
+                  color: 'var(--ink-soft)',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {c.membershipNote}
+              </blockquote>
+            )}
+          </Section>
+        )}
+
         <Section
           id="from"
           title="Откъде печели"

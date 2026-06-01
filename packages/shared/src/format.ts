@@ -119,6 +119,44 @@ export function unp(value: string | null | undefined): string {
 }
 
 /**
+ * Parse the consortium `bidders.name` string into a participants view.
+ *
+ * The upstream feed (AOP / data.egov.bg) gives us a single `contractor_name` string for an award;
+ * for an обединение / ДЗЗД that string concatenates the members. Three real shapes appear in the
+ * production dataset (n=3736 consortium rows as of 2026-06):
+ *
+ *   - `list`  (3,366 rows, ~90 %): clean `;`-separated names, e.g. „A ООД; B ЕООД; C АД".
+ *                                 Trimmed, deduped (same name often repeats); rendered as a list.
+ *   - `prose` (    4 rows, ~0 %):  free-text dump like „Съдружници … са следните лица: 1. … 40 %;
+ *                                 2. … 60 %" — splitting on `;` butchers it, so we keep it verbatim.
+ *   - `none`  (  370 rows, ~10 %): single name with the ДЗЗД/ОБЕДИНЕНИЕ keyword inline; nothing
+ *                                 useful to break out. Caller hides the participants section.
+ *
+ * `null` is the explicit „nothing-to-show" signal so the renderer can skip the whole block instead
+ * of emitting an empty heading. Resolving each member name → ЕИК is parked on the Trade Register
+ * backfill (docs/etl-pipeline.md § Multi-source); until that lands the caller stamps every
+ * participant with `ЕИК неустановен`.
+ */
+export type ConsortiumMembership =
+  | { kind: 'list'; members: string[] } // clean A; B; C — trimmed, deduped, length ≥ 2
+  | { kind: 'prose'; raw: string }; // free-text dump with embedded partner enumeration
+
+const PROSE_RE = /съдружник|следните лица|дялов(?:о)? участие/i;
+
+export function parseConsortiumMembers(name: string): ConsortiumMembership | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  if (PROSE_RE.test(trimmed)) return { kind: 'prose', raw: trimmed };
+  const parts = trimmed
+    .split(';')
+    .map((s) => cleanName(s))
+    .filter(Boolean);
+  const unique = Array.from(new Set(parts));
+  if (unique.length < 2) return null;
+  return { kind: 'list', members: unique };
+}
+
+/**
  * Display name for a winning entity. A consortium row holds a `;`-joined member list → show the
  * first member + „и др." (the **Обединение** badge is rendered separately by the caller). Companies
  * pass through unchanged — source names keep their quoting/casing, because that is the source truth.

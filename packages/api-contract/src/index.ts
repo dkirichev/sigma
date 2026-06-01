@@ -156,6 +156,16 @@ export interface BidDistribution {
   unknown: number;
 }
 
+/** One member of a consortium, as derived from the upstream `contractor_name` string. v1 has no
+ *  per-member ЕИК (the Trade Register backfill that would link names → company profiles is parked,
+ *  see docs/core-scope.md § Owner/Лице layer), so `eik` and `resolvedSlug` are always null today —
+ *  the fields are here so the schema doesn't break when TR resolution lands. */
+export interface ConsortiumParticipant {
+  name: string;
+  eik: string | null;
+  resolvedSlug: string | null;
+}
+
 export interface CompanyDetail {
   slug: string;
   name: string;
@@ -181,6 +191,13 @@ export interface CompanyDetail {
   procedureMix: ProcedureSlice[];
   bids: BidDistribution;
   topContracts: ContractListItem[];
+  /** Members parsed from the consortium's contractor_name string. Empty for plain companies and
+   *  for consortia whose source row carries only a single name with the ДЗЗД/ОБЕДИНЕНИЕ keyword. */
+  participants: ConsortiumParticipant[];
+  /** Verbatim text when the source row is a free-text dump ("Съдружници … са следните лица: 1. …
+   *  40 %; 2. … 60 %") rather than a clean `;`-list. Rare (~4 rows in production); rendered as a
+   *  quotable block so the original detail survives. */
+  membershipNote: string | null;
 }
 
 // ── Authorities ─────────────────────────────────────────────────────────────────────────────────

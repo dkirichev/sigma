@@ -8,6 +8,7 @@ import type {
   BidDistribution,
   CompanyDetail,
   CompanyShare,
+  ConsortiumParticipant,
   ContractDetail,
   ContractLotRow,
   ContractParty,
@@ -17,7 +18,7 @@ import type {
   SectorSpend,
 } from '@sigma/api-contract';
 import { CPV_SECTORS, PROCEDURE_GROUPS, procedureGroup } from '@sigma/config';
-import { cleanName, entityName } from '@sigma/shared';
+import { cleanName, entityName, parseConsortiumMembers } from '@sigma/shared';
 import { listContracts } from './contracts';
 import { authoritySlug, companySlug, contractSlug } from './identity';
 import { typeLabel } from './rows';
@@ -159,6 +160,16 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
     fourPlus: bidsRow?.four_plus ?? 0,
     unknown: bidsRow?.unknown ?? 0,
   };
+  // Surface what we can about consortium membership without TR resolution. Every participant gets
+  // eik/resolvedSlug = null in v1; the renderer flags each row as „ЕИК неустановен" so the gap is
+  // explicit. For plain companies + single-name consortia the parser returns null and we emit an
+  // empty array, which the renderer reads as „hide the section".
+  const membership = row.kind === 'consortium' ? parseConsortiumMembers(row.name) : null;
+  const participants: ConsortiumParticipant[] =
+    membership?.kind === 'list'
+      ? membership.members.map((name) => ({ name, eik: null, resolvedSlug: null }))
+      : [];
+  const membershipNote = membership?.kind === 'prose' ? membership.raw : null;
 
   return {
     slug: companySlug(bidderId),
@@ -186,6 +197,8 @@ export async function getCompany(db: D1Database, bidderId: string): Promise<Comp
     procedureMix: toProcedureMix(procRows.results),
     bids,
     topContracts: top.items,
+    participants,
+    membershipNote,
   };
 }
 
