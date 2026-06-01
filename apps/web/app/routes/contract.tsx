@@ -407,7 +407,17 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
           </p>
           <ul className="linklist">
             <li>
-              <Link to={`/contracts/${c.id}.json`}>JSON запис в Сигма</Link>
+              {/* Plain <a>, not React Router <Link>. The .json endpoint is a resource route
+                  (returns application/json, no HTML), so client-side navigation can't render it —
+                  React Router would treat the JSON as a route module and crash. target=_blank
+                  opens the raw record in a new tab so the visitor doesn't lose the contract page. */}
+              <a
+                href={`/contracts/${c.id}.json`}
+                target="_blank"
+                rel="noopener"
+              >
+                JSON запис в Сигма
+              </a>
               <span className="sub">машиночетим, всички полета — /contracts/{c.id}.json</span>
             </li>
           </ul>
