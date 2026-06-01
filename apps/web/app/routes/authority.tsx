@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { count, money, pct, periodRange } from '@sigma/shared';
+import { count, money, pct, periodRange, plural } from '@sigma/shared';
 import { authorityIdFromSlug, getAuthority } from '@sigma/db';
 import type { Route } from './+types/authority';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -23,6 +23,7 @@ export function headers() {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  if (!params.eik?.trim()) throw new Response('Not Found', { status: 404 });
   const authority = await getAuthority(context.cloudflare.env.DB, authorityIdFromSlug(params.eik));
   if (!authority) throw new Response('Not Found', { status: 404 });
   return { authority };
@@ -76,11 +77,13 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
               term: 'Средно оферти на търг',
               value: a.avgBids.toString().replace('.', ','),
             },
-            a.settlement && { term: 'Седалище', value: a.settlement, sub: a.region ?? undefined },
+            a.settlement
+              ? { term: 'Седалище', value: a.settlement, sub: a.region ?? undefined }
+              : { term: 'Седалище', value: <span className="muted">—</span>, sub: 'няма данни' },
             topSectors ? { term: 'Топ сектори', value: topSectors } : null,
             a.suspect > 0 && {
               term: 'Непотвърдена стойност',
-              value: `${count(a.suspect)} договора`,
+              value: `${count(a.suspect)} ${plural(a.suspect, 'договор', 'договора')}`,
               sub: 'изключени от сумите',
             },
           ]}
@@ -128,7 +131,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
                       {count(co.contracts)}
                     </td>
                     <td data-label="Дял">
-                      <ShareBar ratio={co.sharePct} />
+                      <ShareBar ratio={co.sharePct} warn={co.sharePct >= 0.8} />
                     </td>
                   </tr>
                 ))}
@@ -175,7 +178,7 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
           </Section>
 
           <Section id="how" title="Как купува" hint="Разпределение на договорите по тип процедура.">
-            <StackedBar slices={a.procedureMix} />
+            <StackedBar slices={a.procedureMix.filter((s) => s.sharePct >= 0.0005)} />
           </Section>
         </div>
 
@@ -184,7 +187,8 @@ export default function Authority({ loaderData }: Route.ComponentProps) {
           title="Всички договори"
           hint={
             <>
-              {count(a.contracts)} договора, 2020–2026. Показани са най-скорошните.{' '}
+              {count(a.contracts)} {plural(a.contracts, 'договор', 'договора')}, 2020–2026. Показани
+              са най-скорошните.{' '}
               <Link to={`/contracts?authority=${a.eik}`}>
                 Виж всички / филтрирай / свали като CSV →
               </Link>

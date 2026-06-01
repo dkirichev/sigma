@@ -81,7 +81,21 @@ export default function Methodology({ loaderData }: Route.ComponentProps) {
 
         <div className="split">
           <aside className="toc" aria-label="Съдържание на страницата">
-            <h4>Съдържание</h4>
+            <p
+              className="toc-title"
+              style={{
+                margin: '0 0 var(--s-2)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                lineHeight: 1.3,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-soft)',
+                fontWeight: 500,
+              }}
+            >
+              Съдържание
+            </p>
             <ol>
               {TOC.map(([id, label], i) => (
                 <li key={id}>

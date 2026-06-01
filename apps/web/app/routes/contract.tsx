@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { count, longDate, money, signedPct } from '@sigma/shared';
+import { count, longDate, money, plural, signedPct } from '@sigma/shared';
 import { contractIdFromSlug, getContract } from '@sigma/db';
 import type { Route } from './+types/contract';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -26,6 +26,7 @@ export function headers() {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  if (!params.id?.trim()) throw new Response('Not Found', { status: 404 });
   const contract = await getContract(context.cloudflare.env.DB, contractIdFromSlug(params.id));
   if (!contract) throw new Response('Not Found', { status: 404 });
   return { contract };
@@ -114,7 +115,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
         <Section id="who" title="Възложител и изпълнител">
           <div className="two-col">
             <div>
-              <h4>Възложител</h4>
+              <h3>Възложител</h3>
               <p style={{ fontSize: 18, fontWeight: 700, margin: '6px 0 2px' }}>
                 <Link to={`/authorities/${c.authority.slug}`}>{c.authority.name}</Link>
               </p>
@@ -125,7 +126,8 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               <ul className="linklist">
                 <li>
                   <Link to={`/contracts?authority=${c.authority.eik}`}>
-                    → Всички {count(c.authority.totalContracts)} договора на институцията (
+                    → Всички {count(c.authority.totalContracts)}{' '}
+                    {plural(c.authority.totalContracts, 'договор', 'договора')} на институцията (
                     {money(c.authority.totalEur)})
                   </Link>
                 </li>
@@ -137,7 +139,7 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               </ul>
             </div>
             <div>
-              <h4>Изпълнител</h4>
+              <h3>Изпълнител</h3>
               <p style={{ fontSize: 18, fontWeight: 700, margin: '6px 0 2px' }}>
                 <Link to={`/companies/${c.bidder.slug}`}>{c.bidder.displayName}</Link>
               </p>
@@ -166,7 +168,8 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               <ul className="linklist">
                 <li>
                   <Link to={`/contracts?bidder=${c.bidder.slug}`}>
-                    → Всички {count(c.bidder.totalContracts)} договора на изпълнителя (
+                    → Всички {count(c.bidder.totalContracts)}{' '}
+                    {plural(c.bidder.totalContracts, 'договор', 'договора')} на изпълнителя (
                     {money(c.bidder.totalEur)})
                   </Link>
                 </li>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { count, money, pct, periodRange } from '@sigma/shared';
+import { count, money, pct, periodRange, plural } from '@sigma/shared';
 import { bidderIdFromSlug, getCompany } from '@sigma/db';
 import type { Route } from './+types/company';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -23,6 +23,7 @@ export function headers() {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  if (!params.eik?.trim()) throw new Response('Not Found', { status: 404 });
   const id = bidderIdFromSlug(params.eik);
   if (!id) throw new Response('Not Found', { status: 404 });
   const company = await getCompany(context.cloudflare.env.DB, id);
@@ -84,7 +85,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
             c.settlement && { term: 'Седалище', value: c.settlement, sub: c.region ?? undefined },
             c.suspect > 0 && {
               term: 'Непотвърдена стойност',
-              value: `${count(c.suspect)} договора`,
+              value: `${count(c.suspect)} ${plural(c.suspect, 'договор', 'договора')}`,
               sub: 'изключени от сумите — данните се преглеждат',
             },
           ]}
@@ -93,7 +94,7 @@ export default function Company({ loaderData }: Route.ComponentProps) {
         <Section
           id="from"
           title="Откъде печели"
-          hint={`Институции, наредени по сума, заплатена на ${c.displayName}.`}
+          hint={`Институции, наредени по сума, заплатена на ${c.displayName.replace(/\.$/, '')}.`}
         >
           <div className="table-wrap tbl-cards">
             <table>
@@ -190,8 +191,8 @@ export default function Company({ loaderData }: Route.ComponentProps) {
           title="Най-големи договори"
           hint={
             <>
-              {Math.min(c.topContracts.length, 7)} от {count(c.contracts)} договора, подредени по
-              стойност.{' '}
+              {Math.min(c.topContracts.length, 7)} от {count(c.contracts)}{' '}
+              {plural(c.contracts, 'договор', 'договора')}, подредени по стойност.{' '}
               <Link to={`/contracts?bidder=${c.slug}`}>
                 Виж всички / филтрирай / свали като CSV →
               </Link>

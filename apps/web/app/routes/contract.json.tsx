@@ -6,7 +6,7 @@ import { publicCache } from '../lib/cache';
 export async function loader({ params, context }: Route.LoaderArgs) {
   const id = (params.id ?? '').replace(/\.json$/, '');
   const record = await getContract(context.cloudflare.env.DB, contractIdFromSlug(id));
-  if (!record) throw new Response('Not Found', { status: 404 });
+  if (!record) return Response.json({ error: 'not_found' }, { status: 404 });
   return Response.json(record, {
     headers: { 'Cache-Control': publicCache(3600) },
   });
