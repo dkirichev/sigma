@@ -23,15 +23,21 @@ const HOMOGLYPHS: Record<string, string> = {
   A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х',
 };
 
+const CYRILLIC = /[\p{Script=Cyrillic}]/u;
+
 function deHomoglyph(q: string): string {
   return q.replace(/[aceopxykmtABCEHKMOPTX]/g, (ch) => HOMOGLYPHS[ch] ?? ch);
 }
 
-/** Turn raw user input into an FTS5 prefix-AND query, or null if nothing searchable remains. */
+/** Turn raw user input into an FTS5 prefix-AND query, or null if nothing searchable remains.
+ *  Homoglyph-swap is applied per-term and only when the term already contains at least one
+ *  Cyrillic letter — that's the „I meant Cyrillic but typed a stray Latin o" case. A pure-Latin
+ *  term like „ALSTOM" passes through untouched, otherwise its Latin a/o/t/m would be swapped to
+ *  Cyrillic and the resulting mixed-script token would match nothing in the index. */
 function ftsQuery(q: string): string | null {
-  const terms = deHomoglyph(q).toLowerCase().match(/[\p{L}\p{N}]+/gu);
+  const terms = q.toLowerCase().match(/[\p{L}\p{N}]+/gu);
   if (!terms || terms.length === 0) return null;
-  return terms.map((t) => `${t}*`).join(' ');
+  return terms.map((t) => `${CYRILLIC.test(t) ? deHomoglyph(t) : t}*`).join(' ');
 }
 
 interface HitRow {
