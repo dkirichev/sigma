@@ -1090,6 +1090,50 @@ a.flag:hover {
   margin-left: auto;
   padding-left: var(--s-2);
 }
+.split aside .filter-subgroup {
+  margin: 0;
+  padding: 1px 0;
+}
+.split aside .filter-subgroup > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: 4px 0;
+  list-style: none;
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.split aside .filter-subgroup > summary::-webkit-details-marker {
+  display: none;
+}
+.split aside .filter-subgroup > summary::after {
+  content: '+';
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-left: auto;
+}
+.split aside .filter-subgroup[open] > summary::after {
+  content: '\2013';
+}
+.split aside .filter-subgroup > summary input {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.split aside .filter-subgroup-label {
+  min-width: 0;
+}
+.split aside .filter-subgroup > summary .small.muted {
+  flex-shrink: 0;
+  padding-left: var(--s-1);
+}
+.split aside .filter-subgroup > label.check {
+  margin-left: var(--s-4);
+}
 
 /* Rail wrapper used on narrow viewports — becomes a single disclosure */
 .filters-toggle {

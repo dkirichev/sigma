@@ -140,6 +140,97 @@ export function sectorForCpv(cpvCode: string | null | undefined): CpvSector | nu
 /** The featured sectors (45 Строителство, 15 Храни) — these also drive the price index. */
 export const CURATED_SECTORS: readonly CpvSector[] = CPV_SECTORS.filter((s) => s.curated);
 
+// ── CPV category groups (curated partition over CPV divisions) ─────────────────────────────────
+//
+// CPV has no official level above the 2-digit division, so these top-level categories are a
+// deterministic editorial PARTITION over the 45 divisions above — the same spirit as
+// PROCEDURE_GROUPS below. This is not a name/keyword heuristic: every division is assigned
+// explicitly to exactly one group.
+
+export interface CpvCategory {
+  /** Stable ASCII key (URL/test friendly). */
+  key: string;
+  /** Bulgarian display name. */
+  label: string;
+  /** 2-digit CPV division codes in this category. */
+  divisions: readonly string[];
+}
+
+export const CPV_CATEGORIES: readonly CpvCategory[] = [
+  {
+    key: 'construction',
+    label: 'Строителство и инфраструктура',
+    divisions: ['45', '44', '43', '71'],
+  },
+  {
+    key: 'health',
+    label: 'Здравеопазване и социални дейности',
+    divisions: ['33', '85'],
+  },
+  {
+    key: 'food-agri',
+    label: 'Храни и земеделие',
+    divisions: ['15', '03', '16', '77'],
+  },
+  {
+    key: 'energy',
+    label: 'Енергетика, горива и суровини',
+    divisions: ['09', '76', '14'],
+  },
+  {
+    key: 'it-telecom',
+    label: 'ИТ, телекомуникации и електроника',
+    divisions: ['48', '72', '30', '32', '64'],
+  },
+  {
+    key: 'transport',
+    label: 'Транспорт и логистика',
+    divisions: ['34', '60', '63'],
+  },
+  {
+    key: 'industry',
+    label: 'Индустрия, машини и поддръжка',
+    divisions: ['42', '31', '38', '50', '51', '24', '19'],
+  },
+  {
+    key: 'environment',
+    label: 'Околна среда и комунални услуги',
+    divisions: ['90', '65', '41'],
+  },
+  {
+    key: 'business',
+    label: 'Бизнес, финанси и администрация',
+    divisions: ['79', '66', '70', '73', '75', '22'],
+  },
+  {
+    key: 'security',
+    label: 'Сигурност и отбрана',
+    divisions: ['35'],
+  },
+  {
+    key: 'goods',
+    label: 'Стоки, обзавеждане и потребление',
+    divisions: ['39', '18', '37'],
+  },
+  {
+    key: 'education',
+    label: 'Образование, култура и услуги',
+    divisions: ['80', '92', '55', '98'],
+  },
+];
+
+export const CPV_CATEGORY_BY_DIVISION = new Map<string, CpvCategory>(
+  CPV_CATEGORIES.flatMap((category) =>
+    category.divisions.map((division) => [division, category] as const),
+  ),
+);
+
+/** Map a CPV division/full code to its curated top-level category, or null if missing/unknown. */
+export function categoryForDivision(division: string | null | undefined): CpvCategory | null {
+  if (!division) return null;
+  return CPV_CATEGORY_BY_DIVISION.get(division.replace(/\D/g, '').slice(0, 2)) ?? null;
+}
+
 // ── Procedure groups (ЗОП procedure_type → display group) ──────────────────────────────────────
 //
 // A DETERMINISTIC map of the real `tenders.procedure_type` values (verified against the corpus,

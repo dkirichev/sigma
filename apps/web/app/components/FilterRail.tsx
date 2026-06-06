@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { Form, Link, useNavigate, useSearchParams } from 'react-router';
 import { count as fmtCount } from '@sigma/shared';
 import { withParams } from '../lib/filters';
@@ -9,11 +9,19 @@ export interface FilterOption {
   count?: number;
 }
 
+export interface FilterCategory {
+  key: string;
+  label: string;
+  count?: number;
+  options: FilterOption[];
+}
+
 export interface FilterGroup {
   key: string; // URL param name (also the input `name`)
   label: string;
   type: 'checkbox' | 'radio';
-  options: FilterOption[];
+  options?: FilterOption[];
+  categories?: FilterCategory[];
   selected: string[];
   allLabel?: string; // radio groups: the „Всички" (clear) option label
   more?: { href: string; label: string };
@@ -44,8 +52,7 @@ export function FilterRail({
     sp.getAll(key).map((value) => ({ key, value })),
   );
   const groupKeys = groups.map((g) => g.key);
-  const onChange = (e: FormEvent<HTMLFormElement>) => {
-    const form = e.currentTarget;
+  const submitForm = (form: HTMLFormElement) => {
     const data = new FormData(form);
     const overrides: Record<string, string | string[] | null> = {
       sort: String(data.get('sort') ?? sort),
@@ -56,6 +63,23 @@ export function FilterRail({
       overrides[key] = data.getAll(key).map(String).filter(Boolean);
     }
     navigate(withParams(sp, overrides));
+  };
+  const onChange = (e: FormEvent<HTMLFormElement>) => {
+    submitForm(e.currentTarget);
+  };
+  const onCategoryChange = (e: ChangeEvent<HTMLInputElement>, groupKey: string) => {
+    e.stopPropagation();
+    const input = e.currentTarget;
+    const subgroup = input.closest('.filter-subgroup');
+
+    subgroup
+      ?.querySelectorAll<HTMLInputElement>('input[type="checkbox"][name]')
+      .forEach((member) => {
+        if (member.name === groupKey) member.checked = input.checked;
+      });
+
+    const form = input.form ?? (input.closest('form') as HTMLFormElement | null);
+    if (form) submitForm(form);
   };
   return (
     <aside className="filter-rail" aria-label="Филтри">
@@ -97,19 +121,72 @@ export function FilterRail({
                   {g.allLabel ?? 'Всички'}
                 </label>
               )}
-              {g.options.map((o) => (
-                <label className="check" key={o.value}>
-                  <input
-                    type={g.type}
-                    name={g.key}
-                    value={o.value}
-                    checked={g.selected.includes(o.value)}
-                    onChange={() => {}}
-                  />{' '}
-                  {o.label}
-                  {o.count != null && <span className="muted small">{fmtCount(o.count)}</span>}
-                </label>
-              ))}
+              {g.categories
+                ? g.categories.map((category) => {
+                    const selected = new Set(g.selected);
+                    const selectedCount = category.options.filter((option) =>
+                      selected.has(option.value),
+                    ).length;
+                    const allSelected =
+                      category.options.length > 0 && selectedCount === category.options.length;
+                    const someSelected = selectedCount > 0;
+
+                    return (
+                      <details className="filter-subgroup" key={category.key} open={someSelected}>
+                        <summary>
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            aria-checked={
+                              someSelected && !allSelected
+                                ? 'mixed'
+                                : allSelected
+                                  ? 'true'
+                                  : 'false'
+                            }
+                            aria-label={`Избери всички в ${category.label}`}
+                            ref={(element) => {
+                              if (element) element.indeterminate = someSelected && !allSelected;
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => onCategoryChange(e, g.key)}
+                          />
+                          <span className="filter-subgroup-label">{category.label}</span>
+                          {category.count != null && (
+                            <span className="muted small">{fmtCount(category.count)}</span>
+                          )}
+                        </summary>
+                        {category.options.map((o) => (
+                          <label className="check" key={o.value}>
+                            <input
+                              type={g.type}
+                              name={g.key}
+                              value={o.value}
+                              checked={g.selected.includes(o.value)}
+                              onChange={() => {}}
+                            />{' '}
+                            {o.label}
+                            {o.count != null && (
+                              <span className="muted small">{fmtCount(o.count)}</span>
+                            )}
+                          </label>
+                        ))}
+                      </details>
+                    );
+                  })
+                : (g.options ?? []).map((o) => (
+                    <label className="check" key={o.value}>
+                      <input
+                        type={g.type}
+                        name={g.key}
+                        value={o.value}
+                        checked={g.selected.includes(o.value)}
+                        onChange={() => {}}
+                      />{' '}
+                      {o.label}
+                      {o.count != null && <span className="muted small">{fmtCount(o.count)}</span>}
+                    </label>
+                  ))}
               {g.more && (
                 <p className="small muted" style={{ marginTop: 'var(--s-2)' }}>
                   <Link to={g.more.href}>{g.more.label} →</Link>

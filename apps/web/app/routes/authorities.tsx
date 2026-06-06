@@ -10,7 +10,7 @@ import { ListControls } from '../components/ListControls';
 import { Pagination } from '../components/Pagination';
 import { DataTable, type Column } from '../components/DataTable';
 import { Callout, Chip } from '../components/ui';
-import { getMulti, pageNav, withParams, PAGE_SIZE } from '../lib/filters';
+import { buildSectorGroup, getMulti, pageNav, withParams, PAGE_SIZE } from '../lib/filters';
 import { publicCache } from '../lib/cache';
 
 export function meta(_: Route.MetaArgs) {
@@ -63,13 +63,10 @@ export default function Authorities({ loaderData }: Route.ComponentProps) {
       selected: getMulti(sp, 'type'),
       options: facets.types.map((t) => ({ value: t.value, label: t.label, count: t.count })),
     },
-    {
-      key: 'sector',
-      label: 'Сектор (CPV)',
-      type: 'checkbox',
-      selected: getMulti(sp, 'sector'),
-      options: facets.sectors.map((s) => ({ value: s.value, label: s.label })),
-    },
+    buildSectorGroup(
+      facets.sectors.map((s) => ({ value: s.value, label: s.label })),
+      getMulti(sp, 'sector'),
+    ),
     {
       key: 'year',
       label: 'Година',

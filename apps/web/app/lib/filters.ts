@@ -2,6 +2,10 @@
 // view has a shareable, reproducible address (a methodology principle). Formatting helpers live in
 // @sigma/shared; this module is only about reading/writing the URL.
 
+import { CPV_CATEGORIES, categoryForDivision } from '@sigma/config';
+import type { CpvCategory } from '@sigma/config';
+import type { FilterCategory, FilterGroup, FilterOption } from '../components/FilterRail';
+
 export const PAGE_SIZE = { contracts: 15, companies: 25, authorities: 25 } as const;
 
 /** Parse a repeated/CSV multi-value param (`?year=2025&year=2024` or `?year=2025,2024`) to a string[]. */
@@ -12,6 +16,59 @@ export function getMulti(params: URLSearchParams, key: string): string[] {
     .map((v) => v.trim())
     .filter(Boolean);
   return Array.from(new Set(all));
+}
+
+interface SectorFacet {
+  value: string;
+  label: string;
+  count?: number;
+}
+
+export function buildSectorGroup(
+  facetSectors: readonly SectorFacet[],
+  selected: string[],
+): FilterGroup {
+  const optionsByCategory = new Map<string, FilterOption[]>();
+
+  for (const sector of facetSectors) {
+    const category = categoryForDivision(sector.value);
+    if (!category) continue;
+
+    const options = optionsByCategory.get(category.key) ?? [];
+    options.push({
+      value: sector.value,
+      label: sector.label,
+      ...(sector.count != null ? { count: sector.count } : {}),
+    });
+    optionsByCategory.set(category.key, options);
+  }
+
+  const categories = CPV_CATEGORIES.flatMap((category: CpvCategory): FilterCategory[] => {
+    const options = optionsByCategory.get(category.key);
+    if (!options?.length) return [];
+
+    const allCountsPresent = options.every((option) => option.count != null);
+    const count = allCountsPresent
+      ? options.reduce((sum, option) => sum + (option.count ?? 0), 0)
+      : undefined;
+
+    return [
+      {
+        key: category.key,
+        label: category.label,
+        ...(count != null ? { count } : {}),
+        options,
+      },
+    ];
+  });
+
+  return {
+    key: 'sector',
+    label: 'Сектор (CPV)',
+    type: 'checkbox',
+    selected,
+    categories,
+  };
 }
 
 // Canonical serialization order so the same logical state always yields the same URL string —

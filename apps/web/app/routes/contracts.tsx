@@ -8,7 +8,7 @@ import { FilterRail, type FilterGroup } from '../components/FilterRail';
 import { ListControls } from '../components/ListControls';
 import { Pagination } from '../components/Pagination';
 import { Callout } from '../components/ui';
-import { getMulti, pageNav, withParams, PAGE_SIZE } from '../lib/filters';
+import { buildSectorGroup, getMulti, pageNav, withParams, PAGE_SIZE } from '../lib/filters';
 import { publicCache } from '../lib/cache';
 
 const VALUE_BUCKETS = [
@@ -80,13 +80,10 @@ export default function Contracts({ loaderData }: Route.ComponentProps) {
       selected: getMulti(sp, 'year'),
       options: facets.years.map((y) => ({ value: y.value, label: y.label, count: y.count })),
     },
-    {
-      key: 'sector',
-      label: 'Сектор (CPV)',
-      type: 'checkbox',
-      selected: getMulti(sp, 'sector'),
-      options: facets.sectors.map((s) => ({ value: s.value, label: s.label, count: s.count })),
-    },
+    buildSectorGroup(
+      facets.sectors.map((s) => ({ value: s.value, label: s.label, count: s.count })),
+      getMulti(sp, 'sector'),
+    ),
     {
       key: 'procedure',
       label: 'Процедура',

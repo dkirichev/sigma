@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RISK_WEIGHTS, procedureGroup, requireEnv, sectorForCpv } from './index';
+import {
+  CPV_CATEGORIES,
+  CPV_SECTORS,
+  DEFAULT_RISK_WEIGHTS,
+  categoryForDivision,
+  procedureGroup,
+  requireEnv,
+  sectorForCpv,
+} from './index';
 
 describe('risk weights', () => {
   it('sum to exactly one scoring budget', () => {
@@ -25,6 +33,38 @@ describe('sectorForCpv', () => {
   it('returns null for missing or unknown CPV divisions', () => {
     expect(sectorForCpv(null)).toBeNull();
     expect(sectorForCpv('99000000')).toBeNull();
+  });
+});
+
+describe('CPV_CATEGORIES', () => {
+  it('partitions exactly the configured CPV sector divisions', () => {
+    const sectorCodes = CPV_SECTORS.map((sector) => sector.code).sort();
+    const categoryCodes = CPV_CATEGORIES.flatMap((category) => category.divisions);
+
+    expect(categoryCodes).toHaveLength(45);
+    expect(new Set(categoryCodes).size).toBe(45);
+    expect([...categoryCodes].sort()).toEqual(sectorCodes);
+  });
+
+  it('does not assign a division to more than one category', () => {
+    const counts = new Map<string, number>();
+
+    for (const division of CPV_CATEGORIES.flatMap((category) => category.divisions)) {
+      counts.set(division, (counts.get(division) ?? 0) + 1);
+    }
+
+    const duplicates = [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([division]) => division);
+
+    expect(duplicates).toEqual([]);
+  });
+
+  it('maps a CPV division/full code to its curated category', () => {
+    expect(categoryForDivision('45233120-6')?.key).toBe('construction');
+    expect(categoryForDivision('15800000')?.key).toBe('food-agri');
+    expect(categoryForDivision(null)).toBeNull();
+    expect(categoryForDivision('99000000')).toBeNull();
   });
 });
 
