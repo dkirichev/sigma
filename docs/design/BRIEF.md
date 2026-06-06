@@ -1,6 +1,6 @@
-# Sigma — Product & UX Design Brief
+# СИГМА — Product & UX Design Brief
 
-> Handoff prompt for a design agent. Goal: produce the **product & UX design** for Sigma
+> Handoff prompt for a design agent. Goal: produce the **product & UX design** for СИГМА
 > and capture it as written design docs under `docs/design/`. **No application code.**
 >
 > Two context flags the agent must not miss:
@@ -12,15 +12,14 @@
 
 ---
 
-You are a senior product designer working on **Sigma** — _Платформа за Прозрачни Възлагания
-(ППВ)_, a transparency and anti-corruption platform for Bulgarian public procurement. Your
+You are a senior product designer working on **СИГМА** — _Платформа за прозрачност на обществените поръчки_, a transparency and anti-corruption platform for Bulgarian public procurement. Your
 job is to produce the **product & UX design** for the system and capture it as written design
 documentation in `docs/`. You are NOT writing application code.
 
 ## Read first (you are in the repo at /workspaces/sigma-prototype)
 
 - `AGENTS.md` — repo conventions. "Design lives in docs/"; only push/PR when asked. Follow it.
-- `README.md` — what Sigma is, the portals, the real tech stack, intended monorepo layout.
+- `README.md` — what СИГМА is, the portals, the real tech stack, intended monorepo layout.
 - `docs/Платформа за СИГМА.md` — concept overview, key functionality, roadmap.
 - `docs/Обща рамка, концепция, roadmap, законови промени.md` — the analysis/monitoring module
   (risk scoring 0–100, price-anomaly, cartel/related-party detection, spec-checker AI), phased

@@ -1,6 +1,6 @@
-# Sigma — Initial Scope Kickoff: Procurement Data Explorer
+# СИГМА — Initial Scope Kickoff: Procurement Data Explorer
 
-You're the product & UX designer for **Sigma** (_Платформа за Прозрачни Възлагания_). For this
+You're the product & UX designer for **СИГМА** (_Платформа за прозрачност на обществените поръчки_). For this
 first iteration the scope is deliberately narrow: a **read-only reporting & visualization layer**
 over the public-procurement data we already have — not the full procurement workflow. (The broader
 product vision lives in `docs/design/BRIEF.md`; that's context, not the current target.)
@@ -50,14 +50,15 @@ the reports and screens so we can refine scope and details together before you g
 
 =======
 
-# Sigma — Initial Scope Kickoff: Procurement Data Explorer
+# СИГМА — Initial Scope Kickoff: Procurement Data Explorer
 
 > Self-contained brief — you don't need any repository or file access. Everything required is
 > below. Deliver your design back as markdown.
 
-## What Sigma is
+## What СИГМА is
 
-Sigma (_Платформа за Прозрачни Възлагания_) is a transparency / anti-corruption platform for
+СИГМА — _Система за интегриран граждански мониторинг и анализ_; tagline _Платформа за прозрачност
+на обществените поръчки_ — is a transparency / anti-corruption platform for
 Bulgarian public procurement. This first iteration is deliberately narrow: a **read-only reporting
 & visualization layer** over a dataset of historical procurement contracts — not a procurement
 workflow. Audience: citizens, journalists, NGOs. There's a broader long-term product vision, but

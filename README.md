@@ -1,6 +1,6 @@
-# Sigma
+# СИГМА
 
-**Платформа за Прозрачни Възлагания (ППВ)** — a transparency-and-analysis platform for Bulgarian public procurement. Sigma centralizes the full procurement lifecycle (planning → publication → bidding → evaluation → contract → execution) and layers AI checks on top: it flags rigged technical specifications, detects price anomalies against market indices, surfaces cartels and related-party networks, and publishes a public risk score for every tender.
+**СИГМА — Платформа за прозрачност на обществените поръчки** — a transparency-and-analysis platform for Bulgarian public procurement. СИГМА centralizes the full procurement lifecycle (planning → publication → bidding → evaluation → contract → execution) and layers AI checks on top: it flags rigged technical specifications, detects price anomalies against market indices, surfaces cartels and related-party networks, and publishes a public risk score for every tender.
 
 Built as an analysis/transparency layer over the national procurement data (АОП / ЦАИС ЕОП), with open data for citizens, journalists, and NGOs.
 
@@ -28,7 +28,7 @@ pnpm dev      # daily: starts every Worker + frontend in parallel
 
 ## Layout
 
-Sigma reuses the kolkostruva tech stack — a single TypeScript monorepo on Cloudflare's edge platform (pnpm + turbo; React Router v7 SSR on Workers; D1 + Durable Objects + Vectorize + Workers AI + Queues + KV + R2, fronted by AI Gateway). The intended top-level layout:
+СИГМА reuses the kolkostruva tech stack — a single TypeScript monorepo on Cloudflare's edge platform (pnpm + turbo; React Router v7 SSR on Workers; D1 + Durable Objects + Vectorize + Workers AI + Queues + KV + R2, fronted by AI Gateway). The intended top-level layout:
 
 | Top-level dir        | Contents                                                                                                                                                                                                                                                              |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
