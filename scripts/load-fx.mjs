@@ -106,17 +106,20 @@ for (const { currency, min_date, max_date, contract_dates } of ranges) {
 }
 
 const now = new Date().toISOString();
-const values = rows
-  .map(
-    (r) =>
-      `(${sqlStr(r.currency)}, ${sqlStr(r.rate_date)}, ${r.rate}, 'ecb:frankfurter', ${sqlStr(now)})`,
-  )
-  .join(',\n  ');
-const sql =
-  "DELETE FROM fx_rates WHERE source = 'ecb:frankfurter';\n" +
-  (rows.length
-    ? `INSERT INTO fx_rates (base_currency, rate_date, eur_per_unit, source, fetched_at) VALUES\n  ${values};\n`
-    : '');
+const tuple = (r) =>
+  `(${sqlStr(r.currency)}, ${sqlStr(r.rate_date)}, ${r.rate}, 'ecb:frankfurter', ${sqlStr(now)})`;
+// Chunk the INSERT: one statement with thousands of tuples trips SQLite's
+// SQLITE_TOOBIG statement-length limit under `wrangler d1 execute`, so emit batches.
+const CHUNK = 250;
+const stmts = ["DELETE FROM fx_rates WHERE source = 'ecb:frankfurter';"];
+for (let i = 0; i < rows.length; i += CHUNK) {
+  const batch = rows.slice(i, i + CHUNK).map(tuple).join(',\n  ');
+  if (batch)
+    stmts.push(
+      `INSERT INTO fx_rates (base_currency, rate_date, eur_per_unit, source, fetched_at) VALUES\n  ${batch};`,
+    );
+}
+const sql = stmts.join('\n') + '\n';
 writeFileSync(outFile, sql);
 console.log(`\nwrote ${rows.length} rates → ${outFile}`);
 
