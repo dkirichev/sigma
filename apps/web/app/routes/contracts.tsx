@@ -233,7 +233,7 @@ export default function Contracts({ loaderData }: Route.ComponentProps) {
                 style={{
                   font: '400 18px/1.25 var(--font-serif)',
                   letterSpacing: '-0.01em',
-                  color: 'var(--ink)',
+                  color: 'var(--ink, #111)',
                   marginBottom: 6,
                 }}
               >

@@ -117,7 +117,7 @@ export default function Methodology({ loaderData }: Route.ComponentProps) {
                 lineHeight: 1.3,
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
-                color: 'var(--ink-soft)',
+                color: 'var(--ink-soft, #555)',
                 fontWeight: 500,
               }}
             >

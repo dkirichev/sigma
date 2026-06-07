@@ -78,7 +78,7 @@ function RouteProgress() {
         insetInline: 0,
         top: 0,
         height: '2px',
-        background: 'var(--accent)',
+        background: 'var(--accent, #b00020)',
         transformOrigin: 'left',
         transform: busy ? 'scaleX(1)' : 'scaleX(0)',
         opacity: busy ? 1 : 0,

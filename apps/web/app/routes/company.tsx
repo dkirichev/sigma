@@ -147,8 +147,8 @@ export default function Company({ loaderData }: Route.ComponentProps) {
                 style={{
                   margin: 0,
                   padding: 'var(--s-3) var(--s-4)',
-                  borderLeft: '3px solid var(--rule)',
-                  color: 'var(--ink-soft)',
+                  borderLeft: '3px solid var(--rule, #ccc)',
+                  color: 'var(--ink-soft, #555)',
                   whiteSpace: 'pre-wrap',
                 }}
               >
