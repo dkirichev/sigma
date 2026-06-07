@@ -288,6 +288,9 @@ code,
   align-items: center;
 }
 .site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
   text-decoration: none;
   color: var(--ink-mid);
   padding: 4px 0;
@@ -550,6 +553,9 @@ code,
   color: var(--ink-soft);
 }
 .crumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
   color: var(--ink-mid);
   text-decoration: none;
 }
@@ -643,6 +649,9 @@ main.narrow {
   margin-top: 4px;
 }
 .site-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
   color: var(--ink-mid);
   text-decoration: none;
 }
@@ -1091,7 +1100,8 @@ a.flag:hover {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: 3px 0;
+  min-block-size: 24px;
+  padding: 2px 0;
   font-size: 13.5px;
   line-height: 1.35;
   color: var(--ink);
@@ -1100,6 +1110,9 @@ a.flag:hover {
 .split aside label.check input {
   accent-color: var(--accent);
   flex-shrink: 0;
+  inline-size: 24px;
+  block-size: 24px;
+  margin: 0;
 }
 .split aside label.check .small.muted {
   margin-left: auto;
@@ -1137,7 +1150,9 @@ a.flag:hover {
 .split aside .filter-subgroup > summary input {
   accent-color: var(--accent);
   flex-shrink: 0;
-  margin-top: 2px;
+  inline-size: 24px;
+  block-size: 24px;
+  margin: 0;
 }
 .split aside .filter-subgroup-label {
   min-width: 0;
@@ -1762,6 +1777,9 @@ details.row .body .signal .why {
   margin: 0;
 }
 .paging .ctrl a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
   padding: 6px var(--s-3);
   border: 1px solid var(--rule);
   text-decoration: none;
@@ -1918,6 +1936,9 @@ details.row .body .signal .why {
   border-bottom: 0;
 }
 .linklist li a {
+  display: flex;
+  align-items: center;
+  min-block-size: 24px;
   color: var(--ink);
   text-decoration: none;
 }
@@ -2219,6 +2240,8 @@ tbody td,
 /* Filter rail: no-JS apply button + active-filter chip strip */
 .filter-apply {
   display: inline-block;
+  min-block-size: 24px;
+  min-inline-size: 24px;
   margin: var(--s-3) 0;
   border: 1px solid var(--ink);
   background: var(--ink);
@@ -2237,6 +2260,12 @@ tbody td,
   margin: 0 0 var(--s-4);
   font: 12px/1.5 var(--font-mono);
   color: var(--ink-soft);
+}
+.filter-rail .small.muted > a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  min-inline-size: 24px;
 }
 
 /* „данните се преглеждат" — suppressed suspect value */

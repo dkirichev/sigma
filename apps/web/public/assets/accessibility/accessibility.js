@@ -193,10 +193,10 @@ const accessibility = async (opts) => {
             ef(
                 'li',
                 {},
-                ef('h2', { class: 'a11y-tools__title' }, translations[lng].changeContrast),
+                ef('div', { class: 'a11y-tools__title' }, translations[lng].changeContrast),
                 ef(
                     'div',
-                    { class: 'a11y-tools__contrast' },
+                    { class: 'a11y-tools__contrast', role: 'group', 'aria-label': translations[lng].changeContrast },
                     ...themeButtonsData.map(([c, t, f]) =>
                         ef('button', { class: c, 'aria-label': t, event: { type: 'click', callback: f } }, ef('span', { 'aria-hidden': true }, 'C'))
                     )
