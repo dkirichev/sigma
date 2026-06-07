@@ -29,7 +29,7 @@ const INIT_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 100;
 const SURVIVAL_CSS = `
 html.a11y-textonly .sr-only{display:none!important;position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important}
-html.a11y-textonly .brand-sub{display:none!important}
+html.a11y-textonly .brand-sub{display:inline-block!important;font-weight:700!important;font-size:1.1em!important}
 html.a11y-textonly .skip:not(:focus){position:absolute!important;left:-9999px!important;top:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 html.a11y-textonly img,html.a11y-textonly svg,html.a11y-textonly video{display:none!important}
 html.a11y-textonly #filter-rail-toggle,html.a11y-textonly .filter-rail-toggle,html.a11y-textonly .filter-rail-summary,html.a11y-textonly .a11y-tools__button{display:none!important}
@@ -38,6 +38,16 @@ html.a11y-textonly .accessibility-controls.a11y-tools{display:block!important;po
 html.a11y-textonly .a11y-tools__nav{margin:0!important}
 html.a11y-textonly .a11y-tools__title{font-weight:700!important;margin:4px 0!important}
 html.a11y-textonly .a11y__item button,html.a11y-textonly .a11y__item__button,html.a11y-textonly .a11y-tools__contrast button{border:1px solid #333!important;background:#fff!important;color:#000!important;padding:4px 8px!important;margin:2px!important;cursor:pointer!important}
+html.a11y-textonly body{max-width:1000px!important;margin:0 auto!important;padding:16px!important;line-height:1.5!important}
+html.a11y-textonly .a11y-tools__list,html.a11y-textonly .accessibility-content ul{list-style:none!important;margin:0!important;padding:0!important}
+html.a11y-textonly .a11y-tools__contrast{display:flex!important;flex-wrap:wrap!important;gap:6px!important;margin:4px 0 8px!important}
+html.a11y-textonly .a11y__item{margin:4px 0!important}
+html.a11y-textonly .site-header{border-bottom:1px solid #bbb!important;padding-bottom:10px!important;margin-bottom:16px!important}
+html.a11y-textonly .brand{display:inline-block!important;margin-bottom:6px!important;text-decoration:none!important}
+html.a11y-textonly .site-nav{display:flex!important;flex-wrap:wrap!important;gap:6px 20px!important;margin:8px 0!important}
+html.a11y-textonly .site-nav a{display:inline-block!important;padding:2px 0!important}
+html.a11y-textonly .site-actions{display:flex!important;flex-wrap:wrap!important;gap:18px!important;margin-top:10px!important}
+html.a11y-textonly main{margin-top:8px!important}
 `;
 
 function getAccessibilityInitializer() {
