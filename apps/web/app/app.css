@@ -126,6 +126,18 @@ a:focus {
   outline-offset: 2px;
 }
 
+/* ── Accessibility widget · font-increase ─────────────────────────────
+   The ИО АД widget toggles `.font-resize` on <body> and enlarges it by
+   percentage. Sigma's type scale is fixed px (and clamp/vw) throughout,
+   which ignores an inherited %% bump, so the control had almost no
+   visible effect. Translate the toggle into a real page zoom so every
+   element — px or not — scales uniformly. (Override lives here, not in
+   the pinned vendored accessibility.css.) */
+html body.font-resize {
+  zoom: 1.25;
+  font-size: 15px; /* cancel the widget's %% bump; the zoom does the scaling */
+}
+
 h1,
 h2,
 h3,
