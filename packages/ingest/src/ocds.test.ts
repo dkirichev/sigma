@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { releaseToContracts, type OcdsMeta, type OcdsRelease } from './ocds';
+import {
+  classifyBucketKey,
+  computeCatchupWindow,
+  releaseToAwardSuppliers,
+  releaseToContracts,
+  releaseToLots,
+  releaseToParties,
+  type OcdsMeta,
+  type OcdsRelease,
+} from './ocds';
 import { splitSqlStatements } from './refresh';
 
 const meta: OcdsMeta = {
@@ -73,6 +82,8 @@ describe('releaseToContracts', () => {
       bids_received: 3,
       contract_date: '2026-05-12',
       needs_enrichment: 0,
+      seq_no: null,
+      current_value: null,
     });
   });
 
@@ -174,6 +185,75 @@ describe('releaseToContracts', () => {
     expect(releaseToContracts({ ...release, tag: ['tender'], contracts: [] }, meta)).toHaveLength(
       0,
     );
+  });
+});
+
+describe('OCDS enrichment mappers', () => {
+  it('maps party contacts, award suppliers, and tender lots', () => {
+    const enriched: OcdsRelease = {
+      ...release,
+      parties: [
+        {
+          id: 'B1',
+          name: 'Община Тест',
+          identifier: { id: '000000111', scheme: 'BG-EIK' },
+          roles: ['buyer'],
+          address: {
+            streetAddress: 'ул. 1',
+            locality: 'София',
+            postalCode: '1000',
+            region: 'BG411',
+            countryName: 'BG',
+          },
+          contactPoint: { name: 'Иван', email: 'test@example.bg', telephone: '+359 2 000' },
+        },
+        { id: 'S1', name: 'Тест Строй ЕООД', identifier: { id: '200000007' }, roles: ['supplier'] },
+      ],
+      tender: {
+        ...release.tender,
+        id: 'TENDER-1',
+        lots: [
+          { id: 'LOT-0001', title: 'Позиция 1', value: { amount: '123.45', currency: 'eur' } },
+        ],
+      },
+    };
+
+    expect(releaseToParties(enriched, meta)[0]).toMatchObject({
+      eik: '000000111',
+      street_address: 'ул. 1',
+      locality: 'София',
+      region_nuts: 'BG411',
+      contact_email: 'test@example.bg',
+      contact_phone: '+359 2 000',
+    });
+    expect(releaseToAwardSuppliers(enriched, meta)[0]).toMatchObject({
+      award_id: 'A1',
+      supplier_count: 1,
+      supplier_eik: '200000007',
+    });
+    expect(releaseToLots(enriched, meta)[0]).toMatchObject({
+      tender_id: 'TENDER-1',
+      lot_id: 'LOT-0001',
+      title: 'Позиция 1',
+      value_amount: 123.45,
+      value_currency: 'EUR',
+    });
+  });
+});
+
+describe('bucket key and catchup helpers', () => {
+  it('classifies base and OCDS bucket keys', () => {
+    expect(classifyBucketKey('daily-договори.json')).toBe('contracts');
+    expect(classifyBucketKey('daily-поръчки.json')).toBe('tenders');
+    expect(classifyBucketKey('daily-анекси.json')).toBe('annexes');
+    expect(classifyBucketKey('обявления-съгласно стандарт OCDS.json')).toBe('ocds');
+    expect(classifyBucketKey('README.txt')).toBeNull();
+  });
+
+  it('computes a lookback catchup window', () => {
+    expect(
+      computeCatchupWindow({ maxLoadedDate: '2026-06-01', today: '2026-06-07', lookbackDays: 3 }),
+    ).toEqual({ from: '2026-05-29', to: '2026-06-07' });
   });
 });
 

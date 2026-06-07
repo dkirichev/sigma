@@ -1,15 +1,13 @@
-// OCDS go-forward adapter — discover, fetch, and flatten АОП OCDS release packages into the
-// raw_egov_contracts staging shape. The flatten logic mirrors scripts/load-ocds.mjs (the proven CLI
-// loader) so the daily Workflow and the bulk loader agree on row shapes; this is the in-Worker port.
-
-const API = 'https://data.egov.bg/api';
-const AOP_ORG_ID = 502;
+// OCDS adapter helpers for the procurement ETL. The pure release flatteners here are the single
+// source of truth used by both the Worker-side ingest package and the CLI loaders.
 
 const KIND_CATEGORY: Record<string, string> = {
   goods: 'Доставки',
   services: 'Услуги',
   works: 'Строителство',
 };
+
+const MS_PER_DAY = 86_400_000;
 
 const dateOnly = (s: unknown): string | null => (s ? String(s).slice(0, 10) : null);
 const finiteNum = (v: unknown): number | null => (Number.isFinite(Number(v)) ? Number(v) : null);
@@ -20,7 +18,22 @@ const isoCurrency = (v: unknown): string | null => {
   return /^[A-Z]{3}$/.test(code) ? code : null;
 };
 
-// Minimal shapes of the OCDS fields we read (the feed carries far more; we keep it loose on purpose).
+function validateDay(day: string, label: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`${label} must be YYYY-MM-DD`);
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== day) {
+    throw new Error(`${label} is not a valid date: ${day}`);
+  }
+}
+
+function subtractDays(day: string, days: number): string {
+  validateDay(day, 'day');
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - Math.max(0, Math.floor(days)));
+  return d.toISOString().slice(0, 10);
+}
+
+// Minimal shapes of the OCDS fields we read (the feed carries far more; keep it loose on purpose).
 export interface OcdsRelease {
   ocid?: string;
   id?: string;
@@ -31,15 +44,25 @@ export interface OcdsRelease {
     name?: string;
     identifier?: { id?: string; scheme?: string };
     roles?: string[];
+    address?: {
+      streetAddress?: string;
+      locality?: string;
+      postalCode?: string;
+      region?: string;
+      countryName?: string;
+    };
+    contactPoint?: { name?: string; email?: string; telephone?: string };
   }>;
   buyer?: { id?: string; name?: string };
   tender?: {
+    id?: string;
     title?: string;
-    value?: { amount?: unknown };
+    value?: { amount?: unknown; currency?: unknown };
     mainProcurementCategory?: string;
     procurementMethod?: string;
     procurementMethodDetails?: string;
     items?: Array<{ classification?: { id?: string; scheme?: string } }>;
+    lots?: Array<{ id?: string; title?: string; value?: { amount?: unknown; currency?: unknown } }>;
   };
   awards?: Array<{
     id?: string;
@@ -53,6 +76,7 @@ export interface OcdsRelease {
     title?: string;
     dateSigned?: string;
     value?: { amount?: unknown; currency?: unknown };
+    amendments?: Array<{ description?: string; rationale?: string }>;
   }>;
 }
 
@@ -62,15 +86,14 @@ export interface OcdsPackage {
 }
 
 export interface OcdsMeta {
-  source: string; // e.g. 'ocds:2026:2026-05-01'
-  datasetUri: string;
-  resourceUri: string;
+  source: string; // e.g. 'ocds:2026-05-01'
+  datasetUri: string | null;
+  resourceUri: string | null;
   year: number | null;
   fetchedAt: string;
   publishedDate?: string;
 }
 
-// The raw_egov_contracts staging row produced from a "contract"-tagged release (needs_enrichment = 0).
 export interface ContractStagingRow {
   source: string;
   dataset_uri: string | null;
@@ -78,6 +101,7 @@ export interface ContractStagingRow {
   dataset_year: number | null;
   dataset_variant: string;
   fetched_at: string;
+  seq_no: string | null;
   document_number: string | null;
   contract_number: string | null;
   contract_date: string | null;
@@ -94,10 +118,99 @@ export interface ContractStagingRow {
   contractor_name: string | null;
   signing_value: number | null;
   currency: string | null;
+  vat: string | null;
+  sme: string | null;
   procedure_type: string | null;
   cpv_code: string | null;
   estimated_value: number | null;
+  current_value: number | null;
   needs_enrichment: number;
+}
+
+export interface AmendmentStagingRow {
+  source: string;
+  dataset_uri: string | null;
+  resource_uri: string | null;
+  dataset_year: number | null;
+  dataset_variant: string;
+  fetched_at: string;
+  seq_no: string | null;
+  document_number: string | null;
+  contract_number: string | null;
+  contract_date: string | null;
+  published_at: string | null;
+  unp: string | null;
+  authority_eik: string | null;
+  authority_name: string | null;
+  procurement_subject: string | null;
+  contract_kind: string | null;
+  eu_funded: number | null;
+  contract_subject: string | null;
+  contractor_eik: string | null;
+  contractor_name: string | null;
+  value_before: number | null;
+  value_after: number | null;
+  value_delta: number | null;
+  currency: string | null;
+  description: string | null;
+  reason: string | null;
+  circumstances: string | null;
+  sme: string | null;
+}
+
+export interface PartyStagingRow {
+  source: string;
+  dataset_uri: string | null;
+  resource_uri: string | null;
+  fetched_at: string;
+  ocid: string | null;
+  party_id: string | null;
+  eik: string | null;
+  scheme: string | null;
+  name: string | null;
+  roles: string | null;
+  street_address: string | null;
+  locality: string | null;
+  postal_code: string | null;
+  region_nuts: string | null;
+  country: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+}
+
+export interface AwardSupplierStagingRow {
+  source: string;
+  dataset_uri: string | null;
+  resource_uri: string | null;
+  fetched_at: string;
+  ocid: string | null;
+  award_id: string | null;
+  supplier_count: number | null;
+  supplier_eik: string | null;
+  supplier_name: string | null;
+}
+
+export interface LotStagingRow {
+  source: string;
+  dataset_uri: string | null;
+  resource_uri: string | null;
+  fetched_at: string;
+  ocid: string | null;
+  tender_id: string | null;
+  lot_id: string | null;
+  title: string | null;
+  value_amount: number | null;
+  value_currency: string | null;
+}
+
+function metaBase(meta: OcdsMeta) {
+  return {
+    source: meta.source,
+    dataset_uri: meta.datasetUri,
+    resource_uri: meta.resourceUri,
+    fetched_at: meta.fetchedAt,
+  };
 }
 
 function relContext(rel: OcdsRelease, meta: OcdsMeta) {
@@ -126,9 +239,9 @@ function relContext(rel: OcdsRelease, meta: OcdsMeta) {
 function supplierOf(
   rel: OcdsRelease,
   ctx: ReturnType<typeof relContext>,
-  awardID: string | undefined,
+  contract: { awardID?: string } | undefined,
 ) {
-  const award = (rel.awards ?? []).find((a) => a.id === awardID);
+  const award = (rel.awards ?? []).find((a) => a.id === contract?.awardID);
   const s = (award?.suppliers ?? [])[0];
   const sp = s?.id ? ctx.party[s.id] : null;
   return {
@@ -138,7 +251,7 @@ function supplierOf(
   };
 }
 
-/** Flatten a "contract"-tagged release into staging rows (one per contract), like load-ocds.mjs. */
+/** Flatten a contract-tagged release into raw_egov_contracts staging rows. */
 export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractStagingRow[] {
   if (!(rel.tag ?? []).includes('contract') || !(rel.contracts ?? []).length) return [];
   const ctx = relContext(rel, meta);
@@ -149,14 +262,12 @@ export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractSt
       ?.id ?? null;
   const bids = finiteNum((rel.bids?.statistics ?? []).find((s) => s.measure === 'bids')?.value);
   return (rel.contracts ?? []).map((c) => {
-    const sup = supplierOf(rel, ctx, c.awardID);
+    const sup = supplierOf(rel, ctx, c);
     return {
-      source: meta.source,
-      dataset_uri: meta.datasetUri,
-      resource_uri: meta.resourceUri,
+      ...metaBase(meta),
       dataset_year: meta.year,
       dataset_variant: 'OCDS',
-      fetched_at: meta.fetchedAt,
+      seq_no: null,
       document_number: rel.id ?? null,
       contract_number: c.id ?? null,
       contract_date: dateOnly(c.dateSigned),
@@ -173,64 +284,156 @@ export function releaseToContracts(rel: OcdsRelease, meta: OcdsMeta): ContractSt
       contractor_name: sup.name,
       signing_value: finiteNum(c.value?.amount),
       currency: isoCurrency(c.value?.currency),
+      vat: null,
+      sme: null,
       procedure_type,
       cpv_code: cpv,
       estimated_value: finiteNum(t.value?.amount),
+      current_value: null,
       needs_enrichment: 0,
     };
   });
 }
 
-export interface OcdsDataset {
-  uri: string;
-  name: string;
-  periodStart: string | null;
-  year: number | null;
-}
-
-async function postJSON(method: string, body: unknown): Promise<any> {
-  const resp = await fetch(`${API}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) throw new Error(`${method}: HTTP ${resp.status}`);
-  return resp.json();
-}
-
-/** Discover АОП OCDS datasets (newest period first). Mirrors load-ocds.mjs discoverOcdsDatasets. */
-export async function discoverOcdsDatasets(): Promise<OcdsDataset[]> {
-  const r = await postJSON('listDatasets', {
-    criteria: { org_ids: [AOP_ORG_ID] },
-    records_per_page: 200,
-  });
-  const out: OcdsDataset[] = [];
-  for (const ds of r.datasets ?? []) {
-    if (!/стандарт\s+OCDS/i.test(ds.name ?? '')) continue;
-    const m = (ds.name ?? '').match(/от\s+(\d{2})-(\d{2})-(\d{4})\s+до\s+(\d{2})-(\d{2})-(\d{4})/);
-    const periodStart = m ? `${m[3]}-${m[2]}-${m[1]}` : null;
-    out.push({ uri: ds.uri, name: ds.name, periodStart, year: m ? Number(m[3]) : null });
+export function releaseToAmendments(rel: OcdsRelease, meta: OcdsMeta): AmendmentStagingRow[] {
+  const tags = rel.tag ?? [];
+  if (
+    !(tags.includes('contractAmendment') || tags.includes('contractUpdate')) ||
+    !(rel.contracts ?? []).length
+  ) {
+    return [];
   }
-  return out.sort((a, b) => (b.periodStart ?? '').localeCompare(a.periodStart ?? ''));
-}
-
-/** The first JSON resource of a dataset. */
-export async function findJsonResource(datasetUri: string): Promise<{ uri: string } | null> {
-  const r = await postJSON('listResources', { criteria: { dataset_uri: datasetUri } });
-  const rs = r.resources ?? [];
-  return rs.find((x: any) => /json/i.test(x.file_format || x.format || '')) || rs[0] || null;
-}
-
-/** Fetch one OCDS resource package (the full release-package JSON). */
-export async function fetchOcdsPackage(resourceUri: string): Promise<OcdsPackage> {
-  const resp = await fetch(`${API}/getResourceData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ resource_uri: resourceUri }),
+  const ctx = relContext(rel, meta);
+  return (rel.contracts ?? []).map((c) => {
+    const sup = supplierOf(rel, ctx, c);
+    const amd = (c.amendments ?? []).slice(-1)[0] ?? null;
+    return {
+      ...metaBase(meta),
+      dataset_year: meta.year,
+      dataset_variant: 'OCDS',
+      seq_no: null,
+      document_number: rel.id ?? null,
+      contract_number: c.id ?? null,
+      contract_date: dateOnly(c.dateSigned),
+      published_at: ctx.published_at,
+      unp: rel.ocid ?? null,
+      authority_eik: ctx.authority_eik,
+      authority_name: ctx.authority_name,
+      procurement_subject: ctx.tender.title ?? null,
+      contract_kind: ctx.contract_kind,
+      eu_funded: null,
+      contract_subject: c.title || sup.awardTitle || null,
+      contractor_eik: sup.eik,
+      contractor_name: sup.name,
+      value_before: null,
+      value_after: finiteNum(c.value?.amount),
+      value_delta: null,
+      currency: isoCurrency(c.value?.currency),
+      description: amd?.description || null,
+      reason: amd?.rationale || null,
+      circumstances: null,
+      sme: null,
+    };
   });
-  if (!resp.ok) throw new Error(`getResourceData ${resourceUri}: HTTP ${resp.status}`);
-  const json = (await resp.json()) as { data?: OcdsPackage };
-  return json.data ?? {};
+}
+
+export function releaseToParties(rel: OcdsRelease, meta: OcdsMeta): PartyStagingRow[] {
+  return (rel.parties ?? []).map((p) => {
+    const a = p.address ?? {};
+    const cp = p.contactPoint ?? {};
+    return {
+      ...metaBase(meta),
+      ocid: rel.ocid ?? null,
+      party_id: p.id ?? null,
+      eik: p.identifier?.id ?? null,
+      scheme: p.identifier?.scheme ?? null,
+      name: p.name ?? null,
+      roles: (p.roles ?? []).join(',') || null,
+      street_address: a.streetAddress ?? null,
+      locality: a.locality ?? null,
+      postal_code: a.postalCode ?? null,
+      region_nuts: a.region ?? null,
+      country: a.countryName ?? null,
+      contact_name: cp.name ?? null,
+      contact_email: cp.email ?? null,
+      contact_phone: cp.telephone ?? null,
+    };
+  });
+}
+
+export function releaseToAwardSuppliers(
+  rel: OcdsRelease,
+  meta: OcdsMeta,
+): AwardSupplierStagingRow[] {
+  const party: Record<string, { eik: string | null; name: string | null }> = {};
+  for (const p of rel.parties ?? []) {
+    if (p.id) party[p.id] = { eik: p.identifier?.id ?? null, name: p.name ?? null };
+  }
+  const out: AwardSupplierStagingRow[] = [];
+  for (const aw of rel.awards ?? []) {
+    const sups = aw.suppliers ?? [];
+    for (const s of sups) {
+      const sp = s.id ? party[s.id] : null;
+      out.push({
+        ...metaBase(meta),
+        ocid: rel.ocid ?? null,
+        award_id: aw.id ?? null,
+        supplier_count: sups.length,
+        supplier_eik: sp?.eik ?? s.identifier?.id ?? null,
+        supplier_name: s.name || sp?.name || null,
+      });
+    }
+  }
+  return out;
+}
+
+export function releaseToLots(rel: OcdsRelease, meta: OcdsMeta): LotStagingRow[] {
+  const t = rel.tender ?? {};
+  return (t.lots ?? []).map((lot) => ({
+    ...metaBase(meta),
+    ocid: rel.ocid ?? null,
+    tender_id: t.id ?? null,
+    lot_id: lot.id ?? null,
+    title: lot.title ?? null,
+    value_amount: finiteNum(lot.value?.amount),
+    value_currency: isoCurrency(lot.value?.currency),
+  }));
+}
+
+export type BucketKeyKind = 'contracts' | 'tenders' | 'annexes' | 'ocds';
+
+export function classifyBucketKey(key: string): BucketKeyKind | null {
+  if (/OCDS/i.test(key) || key.includes('обявления')) return 'ocds';
+  if (key.includes('договори')) return 'contracts';
+  if (key.includes('поръчки')) return 'tenders';
+  if (key.includes('анекси')) return 'annexes';
+  return null;
+}
+
+export function computeCatchupWindow({
+  maxLoadedDate,
+  today,
+  lookbackDays,
+}: {
+  maxLoadedDate: string | null | undefined;
+  today: string;
+  lookbackDays: number;
+}): { from: string; to: string } {
+  validateDay(today, 'today');
+  if (maxLoadedDate) validateDay(maxLoadedDate, 'maxLoadedDate');
+  const from = maxLoadedDate
+    ? subtractDays(maxLoadedDate, lookbackDays)
+    : subtractDays(today, lookbackDays);
+  return { from: from > today ? today : from, to: today };
+}
+
+export function daysInWindow(from: string, to: string): number {
+  validateDay(from, 'from');
+  validateDay(to, 'to');
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (start > end) throw new Error('from must be before or equal to to');
+  return Math.floor((end - start) / MS_PER_DAY) + 1;
 }
 
 export const CONTRACT_STAGING_COLS: (keyof ContractStagingRow)[] = [
@@ -240,6 +443,7 @@ export const CONTRACT_STAGING_COLS: (keyof ContractStagingRow)[] = [
   'dataset_year',
   'dataset_variant',
   'fetched_at',
+  'seq_no',
   'document_number',
   'contract_number',
   'contract_date',
@@ -256,8 +460,88 @@ export const CONTRACT_STAGING_COLS: (keyof ContractStagingRow)[] = [
   'contractor_name',
   'signing_value',
   'currency',
+  'vat',
+  'sme',
   'procedure_type',
   'cpv_code',
   'estimated_value',
+  'current_value',
   'needs_enrichment',
+];
+
+export const AMENDMENT_STAGING_COLS: (keyof AmendmentStagingRow)[] = [
+  'source',
+  'dataset_uri',
+  'resource_uri',
+  'dataset_year',
+  'dataset_variant',
+  'fetched_at',
+  'seq_no',
+  'document_number',
+  'contract_number',
+  'contract_date',
+  'published_at',
+  'unp',
+  'authority_eik',
+  'authority_name',
+  'procurement_subject',
+  'contract_kind',
+  'eu_funded',
+  'contract_subject',
+  'contractor_eik',
+  'contractor_name',
+  'value_before',
+  'value_after',
+  'value_delta',
+  'currency',
+  'description',
+  'reason',
+  'circumstances',
+  'sme',
+];
+
+export const PARTY_STAGING_COLS: (keyof PartyStagingRow)[] = [
+  'source',
+  'dataset_uri',
+  'resource_uri',
+  'fetched_at',
+  'ocid',
+  'party_id',
+  'eik',
+  'scheme',
+  'name',
+  'roles',
+  'street_address',
+  'locality',
+  'postal_code',
+  'region_nuts',
+  'country',
+  'contact_name',
+  'contact_email',
+  'contact_phone',
+];
+
+export const AWARD_SUPPLIER_STAGING_COLS: (keyof AwardSupplierStagingRow)[] = [
+  'source',
+  'dataset_uri',
+  'resource_uri',
+  'fetched_at',
+  'ocid',
+  'award_id',
+  'supplier_count',
+  'supplier_eik',
+  'supplier_name',
+];
+
+export const LOT_STAGING_COLS: (keyof LotStagingRow)[] = [
+  'source',
+  'dataset_uri',
+  'resource_uri',
+  'fetched_at',
+  'ocid',
+  'tender_id',
+  'lot_id',
+  'title',
+  'value_amount',
+  'value_currency',
 ];
