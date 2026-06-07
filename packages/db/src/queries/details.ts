@@ -26,13 +26,17 @@ import { sectorRef } from './sectors';
 
 const PEG = 1.95583;
 
-/** Native value → EUR (peg for BGN, identity for EUR, null for foreign without a rate). */
-function eurFromNative(v: number | null, currency: string | null): number | null {
+/** Native value -> EUR (peg for BGN, identity for EUR, FX rate for foreign currencies). */
+function eurFromNative(
+  v: number | null,
+  currency: string | null,
+  fxRate: number | null = null,
+): number | null {
   if (v == null) return null;
   const c = currency || 'BGN';
   if (c === 'EUR') return v;
   if (c === 'BGN') return v / PEG;
-  return null;
+  return fxRate == null ? null : v * fxRate;
 }
 
 interface ProcRow {
@@ -377,6 +381,7 @@ interface ContractDetailRow {
   num_lots: number | null;
   estimated_value: number | null;
   tender_currency: string;
+  tender_fx_rate: number | null;
   start_date: string | null;
   end_date: string | null;
   // authority
@@ -404,6 +409,7 @@ export async function getContract(
               c.bids_received, c.bids_rejected, c.bids_sme, c.bids_non_eea,
               t.title, t.source_id AS unp, t.procedure_type, t.cpv_code, t.cpv_description, t.num_lots,
               t.estimated_value, t.currency AS tender_currency, t.start_date, t.end_date,
+              (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = t.currency AND f.rate_date = c.signed_at) AS tender_fx_rate,
               t.authority_id, a.name AS authority_name, a.type_group AS authority_type_group,
               a.settlement AS authority_settlement,
               c.bidder_id, b.name AS bidder_name, b.kind AS bidder_kind, b.eik_normalized AS bidder_eik,
@@ -431,13 +437,14 @@ export async function getContract(
       .prepare(
         `SELECT l.id AS lot_id, l.title, l.estimated_value, l.cpv_code,
                 c2.id AS contract_id, c2.signing_value_eur,
+                (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = ? AND f.rate_date = c2.signed_at) AS estimated_fx_rate,
                 b2.name AS bidder_name, b2.kind AS bidder_kind, c2.bidder_id
          FROM lots l
          LEFT JOIN contracts c2 ON c2.lot_id = l.id
          LEFT JOIN bidders b2 ON b2.id = c2.bidder_id
          WHERE l.tender_id = ? ORDER BY l.id`,
       )
-      .bind(r.tender_id)
+      .bind(r.tender_currency, r.tender_id)
       .all<{
         lot_id: string;
         title: string;
@@ -445,6 +452,7 @@ export async function getContract(
         cpv_code: string | null;
         contract_id: string | null;
         signing_value_eur: number | null;
+        estimated_fx_rate: number | null;
         bidder_name: string | null;
         bidder_kind: 'company' | 'consortium' | null;
         bidder_id: string | null;
@@ -455,7 +463,7 @@ export async function getContract(
   const signingEur = r.signing_value_eur;
   const currentRaw = r.current_value_eur; // post-annex, suppressed for suspect
   const value: ContractValueTimeline = {
-    estimatedEur: eurFromNative(r.estimated_value, r.tender_currency),
+    estimatedEur: eurFromNative(r.estimated_value, r.tender_currency, r.tender_fx_rate),
     signingEur,
     currentEur: suspect ? null : (currentRaw ?? signingEur),
     deltaPct:
@@ -499,7 +507,7 @@ export async function getContract(
     for (const l of lotRows.results) {
       if (seen.has(l.lot_id)) continue; // a lot may match >1 contract row; keep the first
       seen.add(l.lot_id);
-      const est = eurFromNative(l.estimated_value, 'BGN');
+      const est = eurFromNative(l.estimated_value, r.tender_currency, l.estimated_fx_rate);
       if (est) estimatedTotal += est;
       if (l.signing_value_eur) signedTotal += l.signing_value_eur;
       rows.push({

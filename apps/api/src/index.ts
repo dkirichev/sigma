@@ -6,6 +6,7 @@ import {
   type TenderSummary,
 } from '@sigma/api-contract';
 import { CPV_SECTORS, sectorForCpv } from '@sigma/config';
+import type { Currency } from '@sigma/shared';
 
 export interface Env {
   DB: D1Database;
@@ -43,7 +44,9 @@ function toSummary(t: TenderRow): TenderSummary {
     // TODO: JOIN authorities for the real display name once the parked API has a tender DTO/query.
     authorityName: t.authority_id.replace(/^auth:/, ''),
     estimatedValue:
-      t.estimated_value != null ? { amount: t.estimated_value, currency: 'BGN' } : null,
+      t.estimated_value != null
+        ? { amount: t.estimated_value, currency: t.currency as Currency }
+        : null,
     status: t.status,
     riskScore: null,
     riskBand: null,
