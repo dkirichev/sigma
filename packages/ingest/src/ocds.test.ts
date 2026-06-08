@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyBucketKey,
   computeCatchupWindow,
+  releaseToAmendments,
   releaseToAwardSuppliers,
   releaseToContracts,
   releaseToLots,
@@ -188,6 +189,25 @@ describe('releaseToContracts', () => {
   });
 });
 
+describe('releaseToAmendments', () => {
+  it('drops amendment rows without a contract number', () => {
+    const rows = releaseToAmendments(
+      {
+        ...release,
+        tag: ['contractAmendment'],
+        contracts: [
+          { ...release.contracts![0]!, id: undefined },
+          { ...release.contracts![0]!, id: 'DOC-1' },
+        ],
+      },
+      meta,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.contract_number).toBe('DOC-1');
+  });
+});
+
 describe('OCDS enrichment mappers', () => {
   it('maps party contacts, award suppliers, and tender lots', () => {
     const enriched: OcdsRelease = {
@@ -280,5 +300,26 @@ describe('splitSqlStatements', () => {
   it('splits two statements on one line', () => {
     const sql = 'SELECT 1; SELECT 2;';
     expect(splitSqlStatements(sql)).toEqual(['SELECT 1', 'SELECT 2']);
+  });
+});
+
+describe('transient staging SQL helpers', () => {
+  it('selects served-refresh staging DDL and excludes trade-register staging', async () => {
+    const { transientStagingStatements, dropTransientStagingStatements } = await import('./refresh');
+    const sql = `
+      CREATE TABLE raw_egov_contracts (id INTEGER);
+      CREATE TABLE raw_tr_companies (id INTEGER);
+      CREATE INDEX idx_egov_unp ON raw_egov_contracts(id);
+      CREATE INDEX idx_tr_companies_uic ON raw_tr_companies(id);
+      CREATE TABLE raw_ocds_lots (id INTEGER);
+    `;
+
+    expect(transientStagingStatements(sql)).toEqual([
+      'CREATE TABLE raw_egov_contracts (id INTEGER)',
+      'CREATE INDEX idx_egov_unp ON raw_egov_contracts(id)',
+      'CREATE TABLE raw_ocds_lots (id INTEGER)',
+    ]);
+    expect(dropTransientStagingStatements()).toContain('DROP TABLE IF EXISTS raw_egov_contracts');
+    expect(dropTransientStagingStatements()).not.toContain('DROP TABLE IF EXISTS raw_tr_companies');
   });
 });

@@ -304,10 +304,11 @@ export function releaseToAmendments(rel: OcdsRelease, meta: OcdsMeta): Amendment
     return [];
   }
   const ctx = relContext(rel, meta);
-  return (rel.contracts ?? []).map((c) => {
+  return (rel.contracts ?? []).flatMap((c) => {
+    if (!c.id) return [];
     const sup = supplierOf(rel, ctx, c);
     const amd = (c.amendments ?? []).slice(-1)[0] ?? null;
-    return {
+    return [{
       ...metaBase(meta),
       dataset_year: meta.year,
       dataset_variant: 'OCDS',
@@ -333,7 +334,7 @@ export function releaseToAmendments(rel: OcdsRelease, meta: OcdsMeta): Amendment
       reason: amd?.rationale || null,
       circumstances: null,
       sme: null,
-    };
+    }];
   });
 }
 

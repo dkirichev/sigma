@@ -28,12 +28,6 @@ const MS_PER_DAY = 86_400_000;
 
 type BucketKeys = Partial<Record<BucketKeyKind, string>>;
 
-interface LatestLoadedRow {
-  rows: number;
-  max_source_day: string | null;
-  max_published_at: string | null;
-}
-
 interface FreshnessRow {
   max_loaded_date: string | null;
 }
@@ -127,32 +121,13 @@ function packagePublishedDate(pkg: OcdsPackage | { data?: OcdsPackage }): string
 export async function latestLoadedDate(db: D1Database): Promise<string | null> {
   const row = await db
     .prepare(
-      `SELECT
-         COUNT(*) AS rows,
-         MAX(CASE
-           WHEN substr(source, length(source) - 9, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-           THEN substr(source, length(source) - 9, 10)
-         END) AS max_source_day,
-         MAX(CASE
-           WHEN published_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-           THEN published_at
-         END) AS max_published_at
-       FROM raw_egov_contracts
-       WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'`,
-    )
-    .first<LatestLoadedRow>();
-
-  if (Number(row?.rows ?? 0) > 0) return row?.max_source_day ?? row?.max_published_at ?? null;
-
-  const fallback = await db
-    .prepare(
       `SELECT MAX(as_of) AS max_loaded_date
        FROM data_freshness
        WHERE source IN ('eop', 'ocds')
          AND as_of GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`,
     )
     .first<FreshnessRow>();
-  return fallback?.max_loaded_date ?? null;
+  return row?.max_loaded_date ?? null;
 }
 
 export async function computeWorkerCatchupPlan(

@@ -1,6 +1,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
-import { runRefreshSlice } from '@sigma/ingest';
+import { createTransientStaging, dropTransientStaging, runRefreshSlice } from '@sigma/ingest';
 import refreshSliceSql from '../../../scripts/refresh-slice.sql';
+import workStagingSchemaSql from '../../../scripts/work-staging-schema.sql';
 import { computeWorkerCatchupPlan, ingestBucketWindow, type CatchupPlan } from './eop';
 
 export interface Env {
@@ -57,6 +58,8 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
     const params = event.payload ?? {};
     const fetchedAt = new Date().toISOString();
 
+    await step.do('drop-stale-transient-staging', async () => dropTransientStaging(this.env.DB));
+
     const plan = await step.do('plan-catchup', async () =>
       computeWorkerCatchupPlan(this.env.DB, {
         today: params.today,
@@ -80,24 +83,35 @@ export class RefreshWorkflow extends WorkflowEntrypoint<Env, RefreshParams> {
       );
     }
 
-    const results = await step.do('ingest-storage-eop-bucket', async () =>
-      ingestBucketWindow(this.env.DB, plan, {
-        baseUrl: this.env.EOP_OPEN_DATA_BASE_URL,
-        fetchedAt,
-      }),
-    );
-    const staged = stagedRows(results);
+    let results: Awaited<ReturnType<typeof ingestBucketWindow>> = [];
+    let staged = 0;
+    let derived = 0;
 
-    if (staged === 0) {
-      console.warn(JSON.stringify({ level: 'warn', event: 'etl_zero_ingest', fetchedAt, plan }));
-      return { ...plan, days: results.length, staged: 0, derived: 0 };
+    try {
+      await step.do('create-transient-staging', async () =>
+        createTransientStaging(this.env.DB, workStagingSchemaSql),
+      );
+      results = await step.do('ingest-storage-eop-bucket', async () =>
+        ingestBucketWindow(this.env.DB, plan, {
+          baseUrl: this.env.EOP_OPEN_DATA_BASE_URL,
+          fetchedAt,
+        }),
+      );
+      staged = stagedRows(results);
+
+      if (staged === 0) {
+        console.warn(JSON.stringify({ level: 'warn', event: 'etl_zero_ingest', fetchedAt, plan }));
+        return { ...plan, days: results.length, staged: 0, derived: 0 };
+      }
+
+      derived = await step.do('derive-slice', async () =>
+        runRefreshSlice(this.env.DB, refreshSliceSql),
+      );
+
+      return { ...plan, days: results.length, staged, derived };
+    } finally {
+      await step.do('drop-transient-staging', async () => dropTransientStaging(this.env.DB));
     }
-
-    const derived = await step.do('derive-slice', async () =>
-      runRefreshSlice(this.env.DB, refreshSliceSql),
-    );
-
-    return { ...plan, days: results.length, staged, derived };
   }
 }
 

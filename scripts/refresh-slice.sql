@@ -2,13 +2,11 @@
 -- affected rollup/FTS rows. Run by apps/etl's RefreshWorkflow after the OCDS staging is upserted;
 -- also runnable via sqlite3/wrangler for tests and manual catch-up.
 --
--- SCOPED + IDEMPOTENT. It touches only OCDS-refresh-derived contracts (id 'c:o:%') and the rollup
--- rows of the entities they involve; the 190k admin-derived rows and unaffected rollups are left
--- alone. Dedup keeps it from double-counting a contract the admin base (or a prior full normalize)
--- already holds: an OCDS row is derived only when no NON-'c:o:%' contract shares its contract_number.
--- Re-running yields the same state (the 'c:o:%' wipe + re-derive is deterministic). A periodic full
--- normalize-egov.sql re-bases everything (it rebuilds all contracts as 'c:'||rowid), which a later
--- refresh then no-ops against. Mirrors normalize-egov.sql steps 1/2b/4/5 + precompute.sql, scoped.
+-- SCOPED + IDEMPOTENT. It replaces only c:e:/c:o: contracts represented by the transient window
+-- and refreshes the rollup rows for c:e:/c:o: entities. Admin-derived c: rows are left alone.
+-- EOP wins over OCDS when both feeds carry the same public contract document number. Re-running the
+-- same window yields the same domain rows. Mirrors normalize-egov.sql steps 1/2b/4/5 plus
+-- precompute.sql, scoped.
 
 -- The base-wins dedup probes contracts by АОП document number — index it (no-op if already present).
 CREATE INDEX IF NOT EXISTS idx_contracts_cnum ON contracts(contract_number);
@@ -66,7 +64,7 @@ WHERE bidder_key IS NOT NULL
 GROUP BY bidder_key;
 
 -- EOP tender headers and lots loaded since the last full normalize.
-INSERT OR IGNORE INTO tenders
+INSERT INTO tenders
   (id, source_id, title, authority_id, cpv_code, cpv_description, estimated_value, currency,
    procedure_type, contract_kind, num_lots, status, published_at, deadline_at,
    legal_basis, award_criteria, main_activity, notice_type,
@@ -104,7 +102,36 @@ SELECT
   t.cancelled
 FROM raw_egov_tenders t
 WHERE t.lot_id IS NULL
-  AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || t.authority_eik);
+  AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || t.authority_eik)
+ON CONFLICT(id) DO UPDATE SET
+  source_id = excluded.source_id,
+  title = excluded.title,
+  authority_id = excluded.authority_id,
+  cpv_code = excluded.cpv_code,
+  cpv_description = excluded.cpv_description,
+  estimated_value = excluded.estimated_value,
+  currency = excluded.currency,
+  procedure_type = excluded.procedure_type,
+  contract_kind = excluded.contract_kind,
+  num_lots = excluded.num_lots,
+  status = excluded.status,
+  published_at = excluded.published_at,
+  deadline_at = excluded.deadline_at,
+  legal_basis = excluded.legal_basis,
+  award_criteria = excluded.award_criteria,
+  main_activity = excluded.main_activity,
+  notice_type = excluded.notice_type,
+  place_of_performance = excluded.place_of_performance,
+  start_date = excluded.start_date,
+  end_date = excluded.end_date,
+  duration = excluded.duration,
+  duration_unit = excluded.duration_unit,
+  eu_programme = excluded.eu_programme,
+  green = excluded.green,
+  social = excluded.social,
+  innovation = excluded.innovation,
+  eauction = excluded.eauction,
+  cancelled = excluded.cancelled;
 
 INSERT OR IGNORE INTO lots (id, tender_id, title, cpv_code, estimated_value)
 SELECT
@@ -182,8 +209,19 @@ WHERE (c.source LIKE 'eop:%' OR c.source LIKE 'ocds:%') AND c.unp IS NOT NULL
   AND EXISTS (SELECT 1 FROM authorities a WHERE a.id = 'auth:' || c.authority_eik)
 GROUP BY c.unp;
 
--- ── 4) Contracts — wipe refresh-derived rows + re-derive the EOP base delta and OCDS delta ─────────
-DELETE FROM contracts WHERE id GLOB 'c:[eo]:*';
+-- 4) Contracts - replace rows represented by the transient window, then re-derive deltas.
+DELETE FROM contracts
+WHERE id GLOB 'c:[eo]:*'
+  AND EXISTS (
+    SELECT 1
+    FROM raw_egov_contracts r
+    WHERE r.contract_number = contracts.contract_number
+      AND 't:' || r.unp = contracts.tender_id
+      AND (
+        (contracts.id LIKE 'c:e:%' AND r.source LIKE 'eop:%')
+        OR (contracts.id LIKE 'c:o:%' AND r.source LIKE 'ocds:%')
+      )
+  );
 INSERT OR IGNORE INTO contracts
   (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, signing_value, current_value,
    annex_count, eu_funded, bids_received, contract_kind, awarded_to_group, value_flag, amount_eur,
@@ -266,7 +304,15 @@ FROM (
       END AS trusted_native,
       -- fx: EUR as-is, BGN at the peg, foreign at the signing-date ECB rate (NULL if missing)
       CASE WHEN COALESCE(y.currency,'BGN') NOT IN ('BGN','EUR')
-        THEN (SELECT f.eur_per_unit FROM fx_rates f WHERE f.base_currency = y.currency AND f.rate_date = y.contract_date)
+        THEN (
+          SELECT f.eur_per_unit
+          FROM fx_rates f
+          WHERE f.base_currency = y.currency
+            AND f.rate_date <= y.contract_date
+            AND f.rate_date >= date(y.contract_date, '-10 days')
+          ORDER BY f.rate_date DESC
+          LIMIT 1
+        )
         ELSE NULL END AS fx_rate
     FROM (
       SELECT z.*,
@@ -290,8 +336,6 @@ FROM (
             ELSE NULL
           END AS bidder_key
         FROM raw_egov_contracts c
-        -- OCDS contract rows currently do not get amendment rollups, so current_value should be NULL.
-        -- The COALESCE/annex branches above intentionally mirror normalize-egov.sql if that changes.
         WHERE c.source LIKE 'ocds:%' AND c.contract_number IS NOT NULL
       ) z
     ) y
@@ -301,11 +345,27 @@ WHERE x.bidder_key IS NOT NULL
   AND x.display_native IS NOT NULL
   AND EXISTS (SELECT 1 FROM tenders te WHERE te.id = 't:' || x.unp)
   AND EXISTS (SELECT 1 FROM bidders b WHERE b.id = x.bidder_key)
-  -- base wins: skip if any non-refresh contract already represents this АОП document number
-  AND NOT EXISTS (SELECT 1 FROM contracts c2 WHERE c2.contract_number = x.contract_number AND c2.id NOT GLOB 'c:[eo]:*');
+  -- EOP wins: skip OCDS rows when the transient window has an EOP row for the same document.
+  AND NOT EXISTS (
+    SELECT 1 FROM raw_egov_contracts e
+    WHERE e.source LIKE 'eop:%'
+      AND e.contract_number = x.contract_number
+  )
+  -- Existing admin rows also win.
+  AND NOT EXISTS (SELECT 1 FROM contracts c2 WHERE c2.contract_number = x.contract_number AND c2.id NOT GLOB 'c:[eo]:*')
+  -- Existing EOP rows win over later OCDS-only windows too.
+  AND NOT EXISTS (SELECT 1 FROM contracts c3 WHERE c3.id GLOB 'c:e:*' AND c3.contract_number = x.contract_number);
 
 -- EOP base rows loaded after the last full normalize. This mirrors normalize-egov.sql's EOP branch:
 -- newest cumulative bucket wins, existing full-normalize rows win over refresh rows.
+DELETE FROM contracts
+WHERE id GLOB 'c:o:*'
+  AND EXISTS (
+    SELECT 1 FROM raw_egov_contracts e
+    WHERE e.source LIKE 'eop:%'
+      AND e.contract_number = contracts.contract_number
+  );
+
 INSERT OR IGNORE INTO contracts
   (id, tender_id, bidder_id, amount, currency, signed_at, contract_number, signing_value, current_value,
    annex_count, eu_funded, bids_received, contract_kind, awarded_to_group, value_flag, amount_eur,
@@ -451,8 +511,177 @@ WHERE x.bidder_key IS NOT NULL
       AND c2.bidder_id = x.bidder_key
   );
 
--- ── 5) Refresh rollups + FTS for the AFFECTED entities only, then the small globals ─────────────────
--- Affected = entities involved in a refresh-derived ('c:o:%') contract. The two affected-sets are
+
+-- 5) Promote window amendments into served domain history and roll touched contracts.
+INSERT OR REPLACE INTO amendments (
+  id, natural_key, contract_number, unp, value_before, value_after, value_delta, currency,
+  published_at, document_number, description, source
+)
+WITH keyed AS (
+  SELECT
+    *,
+    'am:' || COALESCE(unp, '') || ':' || COALESCE(contract_number, '') || ':' ||
+      COALESCE(
+        NULLIF(document_number, ''),
+        NULLIF(correction_number, ''),
+        NULLIF(seq_no, ''),
+        'content:' || COALESCE(published_at, '') || ':' ||
+          COALESCE(CAST(value_before AS TEXT), '') || ':' ||
+          COALESCE(CAST(value_after AS TEXT), '') || ':' ||
+          COALESCE(CAST(value_delta AS TEXT), '') || ':' ||
+          COALESCE(currency, '') || ':' ||
+          COALESCE(description, '')
+      ) AS natural_key
+  FROM raw_egov_amendments
+), dedup AS (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY natural_key
+      ORDER BY source DESC, id DESC
+    ) AS rn
+  FROM keyed
+)
+SELECT
+  natural_key,
+  natural_key,
+  contract_number,
+  unp,
+  value_before,
+  value_after,
+  value_delta,
+  currency,
+  published_at,
+  document_number,
+  description,
+  source
+FROM dedup
+WHERE rn = 1;
+
+UPDATE contracts
+SET
+  annex_count = (
+    SELECT COUNT(*) FROM amendments a
+    WHERE a.unp = substr(contracts.tender_id, 3)
+      AND a.contract_number = contracts.contract_number
+  ),
+  current_value = (
+    SELECT a.value_after FROM amendments a
+    WHERE a.unp = substr(contracts.tender_id, 3)
+      AND a.contract_number = contracts.contract_number
+      AND a.value_after IS NOT NULL
+    ORDER BY a.published_at DESC, a.id DESC
+    LIMIT 1
+  )
+WHERE (id GLOB 'c:[eo]:*' AND EXISTS (
+      SELECT 1 FROM raw_egov_contracts rc
+      WHERE rc.unp = substr(contracts.tender_id, 3)
+        AND rc.contract_number = contracts.contract_number
+   ))
+   OR EXISTS (
+      SELECT 1 FROM raw_egov_amendments ra
+      WHERE ra.unp = substr(contracts.tender_id, 3)
+        AND ra.contract_number = contracts.contract_number
+   );
+
+WITH contract_base AS (
+  SELECT c.id, c.currency, c.signing_value, c.current_value, c.fx_rate, c.value_flag,
+    te.estimated_value AS tender_estimated_value,
+    COALESCE((
+      SELECT rc.estimated_value
+      FROM raw_egov_contracts rc
+      WHERE rc.unp = substr(c.tender_id, 3)
+        AND rc.contract_number = c.contract_number
+        AND (
+          (c.id LIKE 'c:e:%' AND rc.source LIKE 'eop:%')
+          OR (c.id LIKE 'c:o:%' AND rc.source LIKE 'ocds:%')
+        )
+      ORDER BY rc.source DESC, rc.id DESC
+      LIMIT 1
+    ), te.estimated_value) AS classifier_estimated_value
+  FROM contracts c
+  JOIN tenders te ON te.id = c.tender_id
+  WHERE (
+      (c.id GLOB 'c:[eo]:*' AND EXISTS (
+        SELECT 1 FROM raw_egov_contracts rc
+        WHERE rc.unp = substr(c.tender_id, 3)
+          AND rc.contract_number = c.contract_number
+      ))
+      OR EXISTS (
+        SELECT 1 FROM raw_egov_amendments ra
+        WHERE ra.unp = substr(c.tender_id, 3)
+          AND ra.contract_number = c.contract_number
+      )
+    )
+    AND EXISTS (
+      SELECT 1 FROM amendments a
+      WHERE a.unp = substr(c.tender_id, 3)
+        AND a.contract_number = c.contract_number
+    )
+), base AS (
+  SELECT id, currency, signing_value, current_value, fx_rate,
+    CASE
+      WHEN c.value_flag <> 'annex_suspect'
+        AND NOT (c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)))
+      THEN c.value_flag
+      WHEN COALESCE(classifier_estimated_value, 0) > 0 AND c.signing_value / classifier_estimated_value >= 100 THEN 'value_suspect'
+      WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
+      WHEN COALESCE(classifier_estimated_value, 0) > 0 AND COALESCE(c.current_value, c.signing_value) / classifier_estimated_value >= 10 THEN 'review'
+      ELSE 'ok'
+    END AS new_value_flag
+  FROM contract_base c
+), calc AS (
+  SELECT id, new_value_flag,
+    CASE new_value_flag
+      WHEN 'annex_suspect' THEN COALESCE(signing_value, current_value)
+      ELSE COALESCE(current_value, signing_value)
+    END AS display_native,
+    CASE new_value_flag
+      WHEN 'value_suspect' THEN NULL
+      WHEN 'annex_suspect' THEN COALESCE(signing_value, current_value)
+      ELSE COALESCE(current_value, signing_value)
+    END AS trusted_native,
+    CASE
+      WHEN new_value_flag IN ('value_suspect', 'annex_suspect') OR current_value IS NULL THEN NULL
+      WHEN COALESCE(currency, 'BGN') = 'EUR' THEN current_value
+      WHEN COALESCE(currency, 'BGN') = 'BGN' THEN current_value / 1.95583
+      WHEN fx_rate IS NOT NULL THEN current_value * fx_rate
+      ELSE NULL
+    END AS new_current_value_eur,
+    currency,
+    fx_rate,
+    signing_value
+  FROM base
+), recalculated AS (
+  SELECT id, new_value_flag, display_native, trusted_native,
+    CASE
+      WHEN trusted_native IS NULL THEN NULL
+      WHEN COALESCE(currency, 'BGN') = 'EUR' THEN trusted_native
+      WHEN COALESCE(currency, 'BGN') = 'BGN' THEN trusted_native / 1.95583
+      WHEN fx_rate IS NOT NULL THEN trusted_native * fx_rate
+      ELSE NULL
+    END AS new_amount_eur,
+    CASE
+      WHEN new_value_flag = 'value_suspect' OR signing_value IS NULL THEN NULL
+      WHEN COALESCE(currency, 'BGN') = 'EUR' THEN signing_value
+      WHEN COALESCE(currency, 'BGN') = 'BGN' THEN signing_value / 1.95583
+      WHEN fx_rate IS NOT NULL THEN signing_value * fx_rate
+      ELSE NULL
+    END AS new_signing_value_eur,
+    new_current_value_eur
+  FROM calc
+)
+UPDATE contracts
+SET
+  value_flag = recalculated.new_value_flag,
+  amount = recalculated.display_native,
+  amount_eur = recalculated.new_amount_eur,
+  signing_value_eur = recalculated.new_signing_value_eur,
+  current_value_eur = recalculated.new_current_value_eur
+FROM recalculated
+WHERE recalculated.id = contracts.id;
+
+-- 6) Refresh rollups + FTS for the AFFECTED entities only, then the small globals
+-- Affected = entities involved in refresh-derived ('c:e:%'/'c:o:%') contracts. The two affected-sets are
 -- inlined as subqueries (not TEMP tables) so the whole script runs as one D1 .batch() transaction.
 DELETE FROM company_totals WHERE bidder_id IN (SELECT DISTINCT bidder_id FROM contracts WHERE id GLOB 'c:[eo]:*');
 INSERT INTO company_totals (bidder_id, name, kind, eik, eik_valid, settlement, won_eur, contracts, authorities, eu_eur, first_date, last_date)
@@ -507,7 +736,22 @@ SELECT 'contract', c.id, COALESCE(NULLIF(c.contract_subject, ''), t.title), COAL
 FROM contracts c JOIN tenders t ON t.id = c.tender_id JOIN authorities a ON a.id = t.authority_id JOIN bidders b ON b.id = c.bidder_id
 WHERE c.id GLOB 'c:[eo]:*' AND COALESCE(NULLIF(c.contract_subject, ''), t.title) IS NOT NULL;
 
--- Small global rollups — recomputed in full (one-row / small facet tables; cheap per refresh).
+-- Small global rollups - recomputed in full (one-row / small facet tables; cheap per refresh).
+DELETE FROM data_freshness;
+INSERT INTO data_freshness (source, as_of, rows, refreshed_at)
+SELECT
+  CASE
+    WHEN id LIKE 'c:e:%' THEN 'eop'
+    WHEN id LIKE 'c:o:%' THEN 'ocds'
+    WHEN id LIKE 'c:%' THEN 'admin'
+    ELSE 'other'
+  END AS src,
+  MAX(CASE WHEN signed_at <= date('now') THEN signed_at END),
+  COUNT(*),
+  datetime('now')
+FROM contracts
+GROUP BY src;
+
 DELETE FROM home_totals;
 INSERT INTO home_totals (id, contracts, value_eur, authorities, bidders, suspect, first_date, last_date, as_of, refreshed_at)
 SELECT 1,
@@ -518,7 +762,7 @@ SELECT 1,
   (SELECT COUNT(*) FROM contracts WHERE value_flag = 'value_suspect'),
   (SELECT MIN(signed_at) FROM contracts WHERE signed_at >= '2020-01-01' AND signed_at <= date('now')),
   (SELECT MAX(signed_at) FROM contracts WHERE signed_at <= date('now')),
-  -- Freshness is the latest in-corpus signed contract date; refresh-slice does not maintain data_freshness.
+  -- Freshness is the latest in-corpus signed contract date. data_freshness is maintained above.
   (SELECT MAX(signed_at) FROM contracts WHERE signed_at <= date('now')),
   datetime('now');
 
