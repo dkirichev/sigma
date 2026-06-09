@@ -109,14 +109,15 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
             </>
           }
         >
-          {c.documentNumber && (
+          {c.eopTenderId && (
             // Deep-link to the procedure's page on the public ЦАИС ЕОП portal, where the official
-            // documents are published and downloadable. `documentNumber` is the EOP noticeId
-            // (packages/ingest/src/base.ts maps document_number ← noticeId). The portal is a
-            // client-rendered SPA, so this is a clickable deep link, not a scrapeable file list.
+            // documents are published and downloadable. The portal keys this page on the numeric EOP
+            // tenderId (preserved on the parent tender as `eop_tender_id`), NOT the noticeId/document
+            // number. The portal is a client-rendered SPA, so this is a clickable deep link, not a
+            // scrapeable file list.
             <a
               className="source-cta"
-              href={`https://app.eop.bg/today/${c.documentNumber}`}
+              href={`https://app.eop.bg/today/${c.eopTenderId}`}
               target="_blank"
               rel="noopener"
             >
