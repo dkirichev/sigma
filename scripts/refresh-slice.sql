@@ -644,7 +644,10 @@ FROM (
           AND NOT EXISTS (
             SELECT 1 FROM raw_egov_contracts a
             WHERE a.source LIKE 'eop:%'
-              AND COALESCE(a.contract_number, '') = COALESCE(c.contract_number, '')
+              -- Bare equality (not COALESCE) so idx_egov_cnum drives the seek; contract_number is
+              -- non-null (base keep-filter), so this is identical to COALESCE(...,'') but avoids the
+              -- O(n^2) full scan. Mirrors the same fix in normalize-egov.sql.
+              AND a.contract_number = c.contract_number
               AND COALESCE(a.unp, '') = COALESCE(c.unp, '')
               AND COALESCE(a.lot_id, '') = COALESCE(c.lot_id, '')
               AND COALESCE(a.contractor_eik, '') = COALESCE(c.contractor_eik, '')
