@@ -661,6 +661,14 @@ main.narrow {
 .site-footer a:visited {
   color: var(--ink-mid);
 }
+.site-footer .repo-link {
+  gap: 6px;
+}
+.site-footer .repo-link svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
 .site-footer .freshness {
   color: var(--ink-soft);
   font-size: 11px;
