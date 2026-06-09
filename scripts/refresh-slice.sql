@@ -902,7 +902,6 @@ SELECT
   CASE
     WHEN id LIKE 'c:e:%' THEN 'eop'
     WHEN id LIKE 'c:o:%' THEN 'ocds'
-    WHEN id LIKE 'c:%' THEN 'admin'
     ELSE 'other'
   END AS src,
   MAX(CASE WHEN signed_at <= date('now') THEN signed_at END),

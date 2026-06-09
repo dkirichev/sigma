@@ -272,7 +272,7 @@ FROM (
     SELECT
       contractor_name,
       TRIM(CASE WHEN contractor_eik LIKE 'ЕИК %' THEN SUBSTR(contractor_eik, 5) ELSE contractor_eik END) AS eik_clean
-    FROM raw_egov_contracts WHERE source LIKE 'admin:%' OR source LIKE 'eop:%' OR source LIKE 'ocds:%'
+    FROM raw_egov_contracts WHERE source LIKE 'eop:%' OR source LIKE 'ocds:%'
   )
 )
 WHERE bidder_key IS NOT NULL
@@ -571,7 +571,6 @@ SELECT
   CASE
     WHEN id LIKE 'c:e:%' THEN 'eop'
     WHEN id LIKE 'c:o:%' THEN 'ocds'
-    WHEN id LIKE 'c:%' THEN 'admin'
     ELSE 'other'
   END AS src,
   MAX(CASE WHEN signed_at <= date('now') THEN signed_at END),

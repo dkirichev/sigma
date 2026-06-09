@@ -1,7 +1,8 @@
 -- Work DB staging schema. Served D1 must never include these raw tables.
 -- ===================================================================================
--- 2) STAGING — admin ЦАИС ЕОП export (data/Open_data_resources.zip), by scripts/load-admin.mjs.
---    100% raw landing (source 'admin:<cat>:<year>'); all cleaning happens in normalize-egov.sql.
+-- 2) STAGING — storage.eop.bg per-day open-data buckets (base JSON + in-bucket OCDS), by
+--    scripts/load-eop.mjs. 100% raw landing (source 'eop:<cat>:<date>' / 'ocds:<date>'); all cleaning
+--    happens in normalize-egov.sql. These raw tables live in the work DB only, never the served D1.
 -- ===================================================================================
 
 CREATE TABLE raw_egov_contracts (
@@ -47,7 +48,7 @@ CREATE TABLE raw_egov_contracts (
   legal_basis      TEXT,                  -- Правно основание за откриване
   annex_count      INTEGER DEFAULT 0,     -- rolled up by derive-amendments.sql
 
-  -- full capture — every remaining admin Contracts header (see scripts/load-admin.mjs CATS.contracts)
+  -- full capture — every remaining EOP contracts field (scripts/load-eop.mjs)
   tender_ext_id            TEXT,          -- ID на поръчката
   procurement_currency     TEXT,          -- Валута на поръчката
   joint_procurement        INTEGER,       -- Съвместно възлагане
@@ -113,7 +114,7 @@ CREATE TABLE raw_egov_tenders (
   lot_name        TEXT,                    -- Наименование на обособената позиция
   num_lots        INTEGER,                 -- Брой обособени позиции (on the header row)
   eu_funded       INTEGER,
-  -- full capture — every remaining admin Tenders header (see scripts/load-admin.mjs CATS.tenders)
+  -- full capture — every remaining EOP tenders field (scripts/load-eop.mjs)
   seq_no               TEXT,
   document_number      TEXT,
   published_at         TEXT,
@@ -178,7 +179,7 @@ CREATE TABLE raw_egov_amendments (
   reason           TEXT,                  -- Причини за изменение (ЗОП основание)
   circumstances    TEXT,                  -- Обстоятелства
   sme              TEXT,
-  -- full capture — every remaining admin Annexes header (see scripts/load-admin.mjs CATS.annexes)
+  -- full capture — every remaining EOP annexes field (scripts/load-eop.mjs)
   tender_ext_id            TEXT,
   procedure_type           TEXT,
   cpv_code                 TEXT,
@@ -198,7 +199,7 @@ CREATE TABLE raw_egov_amendments (
 );
 
 -- OCDS parties (storage.eop.bg in-bucket OCDS feed) — full party records: ЕИК + address (city + NUTS region) +
--- roles + contact. Captured by scripts/load-ocds.mjs; normalize-egov.sql enriches authorities/bidders
+-- roles + contact. Captured by scripts/load-eop.mjs; normalize-egov.sql enriches authorities/bidders
 -- location from here by ЕИК. Source 'ocds:%'.
 CREATE TABLE raw_ocds_parties (
   id             INTEGER PRIMARY KEY,

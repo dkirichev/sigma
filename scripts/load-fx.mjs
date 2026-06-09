@@ -64,11 +64,11 @@ function queryTarget(sql) {
   return JSON.parse(out.slice(out.indexOf('[')))[0].results;
 }
 
-// EOP is the canonical historical corpus; admin is retained for legacy local staging and OCDS deltas.
+// EOP is the canonical historical corpus; OCDS adds go-forward deltas. Both feed the work DB.
 const ranges = queryTarget(
   'SELECT currency, MIN(contract_date) AS min_date, MAX(contract_date) AS max_date, ' +
     'COUNT(DISTINCT contract_date) AS contract_dates FROM raw_egov_contracts ' +
-    "WHERE (source LIKE 'eop:%' OR source LIKE 'admin:%' OR source LIKE 'ocds:%') " +
+    "WHERE (source LIKE 'eop:%' OR source LIKE 'ocds:%') " +
     "AND currency NOT IN ('BGN','EUR') AND contract_date IS NOT NULL " +
     'GROUP BY currency ORDER BY currency',
 );

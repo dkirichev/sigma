@@ -4,7 +4,8 @@
 -- preserve), so the schema is ONE file rather than an incremental migration chain — re-introduce
 -- incremental migrations only once there is deployed data you cannot drop. Applied by
 -- `wrangler d1 migrations apply sigma [--local|--remote]`; the full import is `node scripts/import.mjs`
--- (migrations → load-admin → derive-amendments → load-fx → normalize-egov).
+-- (work DB: load-eop → derive-amendments → load-fx → load-nuts → normalize-egov → promote-amendments,
+-- then ship-domain copies the served tables into the served D1 and runs precompute on it).
 --
 -- Modelling rationale (cleaning policy, value_flag, consortium model, canonical EUR + FX, the
 -- synthetic-tender rule) lives in docs/etl-pipeline.md and docs/core-scope.md.
