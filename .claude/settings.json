@@ -2,8 +2,5 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "model": "opus[1m]",
-  "alwaysThinkingEnabled": true,
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["context7", "playwright"]
+  "enableAllProjectMcpServers": true
 }
