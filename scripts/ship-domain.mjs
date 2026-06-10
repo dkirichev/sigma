@@ -24,7 +24,7 @@ const TABLES = [
 ];
 const MAX_BATCH_BYTES = 90_000;
 const MAX_BATCH_ROWS = 400;
-const MAX_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_FILE_BYTES = Number(process.env.SHIP_MAX_FILE_BYTES) || 64 * 1024 * 1024;
 
 function arg(name) {
   const hit = process.argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
@@ -49,7 +49,18 @@ function d1Args(extra) {
 }
 
 function d1File(file) {
-  execFileSync('wrangler', d1Args(['--file', file]), { cwd: apiDir, stdio: 'inherit' });
+  const attempts = Math.max(1, Number(process.env.SHIP_RETRIES) || 1);
+  for (let i = 1; ; i += 1) {
+    try {
+      execFileSync('wrangler', d1Args(['--file', file]), { cwd: apiDir, stdio: 'inherit' });
+      return;
+    } catch (err) {
+      if (i >= attempts) throw err;
+      const backoff = Math.min(30, 2 ** i);
+      console.error(`!! d1 execute failed (attempt ${i}/${attempts}) for ${file}; retrying in ${backoff}s`);
+      execFileSync('sleep', [String(backoff)]);
+    }
+  }
 }
 
 function d1MigrationsApply() {
