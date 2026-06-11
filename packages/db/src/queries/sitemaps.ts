@@ -13,7 +13,11 @@ const CHUNK = 5000;
 const CONTRACTS_PER_SITEMAP = 45000;
 
 function xmlEscape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // W3C <lastmod> from a stored ISO date (tolerates a datetime suffix); '' when none usable.
