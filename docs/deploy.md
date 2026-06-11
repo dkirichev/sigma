@@ -324,10 +324,19 @@ staging schedule (e.g. `30 */6 * * *`) so it doesn't hit the source at the same 
   resource Sigma provisions. Full CSV exports are streamed without edge caching and are protected by
   the `CSV_RATE_LIMITER` Workers Rate Limiting binding (10/60s); `/companies` and `/authorities`
   cache misses are protected by `AGG_RATE_LIMITER` (30/60s).
+- **Security remediation notes.** Worker route matching normalizes decoded/lowercased paths and
+  strips trailing slashes, so `/contracts.csv/` reaches the same CSV limiter gate as
+  `/contracts.csv`, and `/companies/` / `/authorities/` reach the same aggregation gate as their
+  slashless forms. Static assets are served by Workers Assets rather than the SSR Worker; their
+  security headers come from [apps/web/public/_headers](../apps/web/public/_headers), which is copied
+  into the built client assets. Sitemap URL encoding strips XML-invalid C0 controls before escaping,
+  preventing a bad upstream byte from breaking a sitemap page. Keyset pagination cursors are bound
+  to one combined integrity token for sort order plus the canonical active filter set, so cross-filter
+  cursor replay fails closed and restarts pagination.
 - **Custom-domain checklist.** In production the Worker redirects cleartext HTTP to HTTPS before
   route handling. For the production custom domain, set Minimum TLS Version 1.2, enable Always Use
-  HTTPS, submit/verify HSTS preload, and optionally add a case-insensitive WAF rate rule on `*.csv`
-  as a zone-level backstop (not available on `workers.dev`).
+  HTTPS, submit/verify HSTS preload, and add a case-insensitive WAF rate rule on `*.csv` as a
+  zone-level backstop (not available on `workers.dev`).
 
 ## Production-v2 (future, separate account)
 
