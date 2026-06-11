@@ -313,7 +313,14 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
               {
                 term: 'Подписан на',
                 value: c.signedAt ? (
-                  longDate(c.signedAt)
+                  <>
+                    {longDate(c.signedAt)}{' '}
+                    {c.dateSuspect && (
+                      <span className="suspect">
+                        Възможна грешка в датата — подписана след публикуване на обявлението
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <span className="muted">не е наличен</span>
                 ),

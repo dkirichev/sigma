@@ -368,6 +368,7 @@ interface ContractDetailRow {
   signing_value_eur: number | null;
   current_value_eur: number | null;
   value_flag: string;
+  date_flag: string;
   bids_received: number | null;
   bids_rejected: number | null;
   bids_sme: number | null;
@@ -406,7 +407,7 @@ export async function getContract(
     .prepare(
       `SELECT c.id, c.tender_id, c.contract_subject, c.contract_number, c.document_number, c.lot_id,
               c.signed_at, c.published_at, c.contract_kind, c.eu_funded, c.eu_programme, c.duration_days,
-              c.amount_eur, c.signing_value_eur, c.current_value_eur, c.value_flag,
+              c.amount_eur, c.signing_value_eur, c.current_value_eur, c.value_flag, c.date_flag,
               c.bids_received, c.bids_rejected, c.bids_sme, c.bids_non_eea,
               t.title, t.source_id AS unp, t.procedure_type, t.cpv_code, t.cpv_description, t.num_lots,
               t.eop_tender_id,
@@ -462,6 +463,7 @@ export async function getContract(
   ]);
 
   const suspect = r.value_flag === 'value_suspect' || r.value_flag === 'annex_suspect';
+  const dateSuspect = r.date_flag === 'signed_after_publication';
   const signingEur = r.signing_value_eur;
   const currentRaw = r.current_value_eur; // post-annex, suppressed for suspect
   const value: ContractValueTimeline = {
@@ -549,6 +551,7 @@ export async function getContract(
     lotLabel: r.lot_id ? (r.lot_id.split(':').pop() ?? null) : null,
     signedAt: r.signed_at,
     publishedAt: r.published_at,
+    dateSuspect,
     startDate: r.start_date,
     endDate: r.end_date,
     contractKind: r.contract_kind,

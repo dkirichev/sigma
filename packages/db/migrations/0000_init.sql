@@ -123,6 +123,7 @@ CREATE TABLE contracts (
   contract_kind    TEXT,                   -- Доставки / Услуги / Строителство
   awarded_to_group INTEGER,                -- this AWARD went to an обединение (per-contract, distinct from bidders.is_consortium)
   value_flag       TEXT NOT NULL DEFAULT 'ok',  -- ok | review | annex_suspect | value_suspect (data-quality verdict)
+  date_flag        TEXT NOT NULL DEFAULT 'ok',  -- ok | signed_after_publication (non-destructive date-quality verdict)
   amount_eur       REAL,                   -- canonical EUR, SAFE TO SUM; NULL = excluded (value_suspect)
   fx_converted     INTEGER NOT NULL DEFAULT 0,  -- 1 = amount_eur came from a foreign-currency market rate
   fx_rate          REAL,                   -- EUR per 1 unit of `currency` for foreign rows (amount × fx_rate = amount_eur)
@@ -346,6 +347,7 @@ CREATE INDEX idx_authorities_ekatte ON authorities(ekatte);
 CREATE INDEX idx_contracts_tender ON contracts(tender_id);
 CREATE INDEX idx_contracts_bidder ON contracts(bidder_id);
 CREATE INDEX idx_contracts_value_flag ON contracts(value_flag);
+CREATE INDEX idx_contracts_date_flag ON contracts(date_flag);
 CREATE INDEX idx_contracts_signed ON contracts(signed_at);            -- contracts list date sort/filter
 CREATE INDEX idx_contracts_cnum ON contracts(contract_number);        -- daily-refresh base-wins dedup
 CREATE INDEX idx_contracts_amount_eur ON contracts(amount_eur);       -- contracts list value sort + keyset

@@ -266,6 +266,7 @@ export interface ContractDetail {
   lotLabel: string | null;
   signedAt: string | null;
   publishedAt: string | null;
+  dateSuspect: boolean;
   startDate: string | null;
   endDate: string | null;
   contractKind: string | null;

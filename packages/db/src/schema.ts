@@ -92,6 +92,7 @@ export interface ContractRow {
   contract_kind: string | null;
   awarded_to_group: number | null;
   value_flag: string;
+  date_flag: string;
   amount_eur: number | null;
   fx_converted: number;
   fx_rate: number | null;
