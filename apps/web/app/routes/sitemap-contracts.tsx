@@ -4,6 +4,11 @@ import { withDataSource } from '../lib/dataSource';
 
 export function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
-  const page = Math.max(1, Number(url.searchParams.get('p') ?? '1') || 1);
+  const rawPage = url.searchParams.get('p');
+  if (rawPage !== null && !/^[1-9][0-9]*$/.test(rawPage)) {
+    return new Response('Not found', { status: 404 });
+  }
+
+  const page = rawPage === null ? 1 : Number(rawPage);
   return withDataSource(streamContractSitemap(context.cloudflare.env.DB, url.origin, page));
 }
