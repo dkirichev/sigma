@@ -373,6 +373,10 @@ interface ContractDetailRow {
   bids_rejected: number | null;
   bids_sme: number | null;
   bids_non_eea: number | null;
+  subcontractor_eik: string | null;
+  subcontractor_name: string | null;
+  subcontract_value: number | null;
+  contract_currency: string;
   // tender
   title: string;
   unp: string;
@@ -409,6 +413,7 @@ export async function getContract(
               c.signed_at, c.published_at, c.contract_kind, c.eu_funded, c.eu_programme, c.duration_days,
               c.amount_eur, c.signing_value_eur, c.current_value_eur, c.value_flag, c.date_flag,
               c.bids_received, c.bids_rejected, c.bids_sme, c.bids_non_eea,
+              c.subcontractor_eik, c.subcontractor_name, c.subcontract_value, c.currency AS contract_currency,
               t.title, t.source_id AS unp, t.procedure_type, t.cpv_code, t.cpv_description, t.num_lots,
               t.eop_tender_id,
               t.estimated_value, t.currency AS tender_currency, t.start_date, t.end_date,
@@ -541,6 +546,22 @@ export async function getContract(
     };
   }
 
+  // Declared subcontractor ("Подизпълнител" in the АОП feed) — sparse (~0.8% of contracts). Value is
+  // in the contract's native currency; normalise to EUR (fixed BGN peg) to match the rest of the UI.
+  const subcontractor =
+    r.subcontractor_name && r.subcontractor_name.trim()
+      ? {
+          name: cleanName(r.subcontractor_name),
+          eik: r.subcontractor_eik,
+          valueEur:
+            r.subcontract_value == null
+              ? null
+              : r.contract_currency === 'EUR'
+                ? r.subcontract_value
+                : r.subcontract_value / 1.95583,
+        }
+      : null;
+
   const detail: ContractDetail = {
     id: contractSlug(r.id),
     subject: r.contract_subject?.trim() || r.title,
@@ -570,6 +591,7 @@ export async function getContract(
     authority,
     bidder,
     lots,
+    subcontractor,
   };
 
   return { ...detail, sourceNames: { authority: r.authority_name, bidder: r.bidder_name } };

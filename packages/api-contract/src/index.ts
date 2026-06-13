@@ -294,6 +294,8 @@ export interface ContractDetail {
   authority: ContractParty;
   bidder: ContractParty;
   lots: ContractLots | null;
+  /** Declared subcontractor from the АОП feed ("Подизпълнител"), sparse (~0.8% of contracts). */
+  subcontractor: { name: string; eik: string | null; valueEur: number | null } | null;
 }
 
 /** The machine-readable contract record served at `/contracts/:id.json`. */

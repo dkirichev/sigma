@@ -248,6 +248,18 @@ export default function Contract({ loaderData }: Route.ComponentProps) {
                   </Link>
                 </li>
               </ul>
+              {c.subcontractor && (
+                <p className="small muted" style={{ margin: '8px 0 0' }}>
+                  Подизпълнител: <strong>{c.subcontractor.name}</strong>
+                  {c.subcontractor.eik && (
+                    <>
+                      {' '}
+                      · ЕИК <span className="mono">{c.subcontractor.eik}</span>
+                    </>
+                  )}
+                  {c.subcontractor.valueEur != null && <> · {money(c.subcontractor.valueEur)}</>}
+                </p>
+              )}
             </div>
           </div>
         </Section>
