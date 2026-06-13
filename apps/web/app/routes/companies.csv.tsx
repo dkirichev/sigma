@@ -1,9 +1,17 @@
 import { streamCompaniesCsv } from '@sigma/db';
 import type { Route } from './+types/companies.csv';
+import { servedCsvExport } from '../lib/csv-export';
 import { companyListParams } from '../lib/filters';
-import { withDataSource } from '../lib/dataSource';
 
-export function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
   const sp = new URL(request.url).searchParams;
-  return withDataSource(streamCompaniesCsv(context.cloudflare.env.DB, companyListParams(sp)));
+  const params = companyListParams(sp);
+  return servedCsvExport({
+    env: context.cloudflare.env,
+    request,
+    route: 'companies',
+    sort: params.sort,
+    params,
+    stream: () => streamCompaniesCsv(context.cloudflare.env.DB, params),
+  });
 }

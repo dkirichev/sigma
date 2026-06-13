@@ -18,6 +18,7 @@
       "migrations_dir": "../../packages/db/migrations",
     },
   ],
+  "r2_buckets": [{ "binding": "CSV_CACHE", "bucket_name": "sigma-csv-cache" }],
   "unsafe": {
     "bindings": [
       {

@@ -1,22 +1,29 @@
 import { streamContractsCsv, type ContractSort } from '@sigma/db';
 import type { Route } from './+types/contracts.csv';
+import { servedCsvExport } from '../lib/csv-export';
 import { getMulti } from '../lib/filters';
-import { withDataSource } from '../lib/dataSource';
 
 // Resource route (no default export): a streamed text/csv Response honouring the list filters.
-export function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
   const sp = new URL(request.url).searchParams;
-  return withDataSource(
-    streamContractsCsv(context.cloudflare.env.DB, {
-      sort: (sp.get('sort') as ContractSort) || 'value-desc',
-      years: getMulti(sp, 'year'),
-      sectors: getMulti(sp, 'sector'),
-      procedureGroups: getMulti(sp, 'procedure'),
-      valueBucket: sp.get('value'),
-      eu: (sp.get('eu') as 'eu' | 'national' | null) || null,
-      authority: sp.get('authority'),
-      bidder: sp.get('bidder'),
-      q: sp.get('q'),
-    }),
-  );
+  const sort = (sp.get('sort') as ContractSort) || 'value-desc';
+  const params = {
+    sort,
+    years: getMulti(sp, 'year'),
+    sectors: getMulti(sp, 'sector'),
+    procedureGroups: getMulti(sp, 'procedure'),
+    valueBucket: sp.get('value'),
+    eu: (sp.get('eu') as 'eu' | 'national' | null) || null,
+    authority: sp.get('authority'),
+    bidder: sp.get('bidder'),
+    q: sp.get('q'),
+  };
+  return servedCsvExport({
+    env: context.cloudflare.env,
+    request,
+    route: 'contracts',
+    sort,
+    params,
+    stream: () => streamContractsCsv(context.cloudflare.env.DB, params),
+  });
 }
