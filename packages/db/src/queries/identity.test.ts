@@ -35,6 +35,13 @@ describe('authority / contract slugs', () => {
     expect(contractSlug('c:52')).toBe('52');
     expect(contractIdFromSlug('52')).toBe('c:52');
   });
+  it('round-trips normalized EOP/OCDS contract ids', () => {
+    const eopId = 'c:e:UNP-1:CONTRACT-1:2026-06-13';
+    const ocdsId = 'c:o:UNP-1:CONTRACT-1:2026-06-13';
+
+    expect(contractIdFromSlug(contractSlug(eopId))).toBe(eopId);
+    expect(contractIdFromSlug(contractSlug(ocdsId))).toBe(ocdsId);
+  });
 });
 
 describe('hrefForEntity', () => {

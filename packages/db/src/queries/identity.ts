@@ -1,5 +1,5 @@
 // Identity ⇄ URL slug mapping (pure; no DB). Domain ids are `'auth:'||ЕИК`, `'eik:'||ЕИК` (valid) /
-// `'name:'||name` (no valid ЕИК), `'c:'||rowid`. Authority/company routes use the ЕИК (clean,
+// `'name:'||name` (no valid ЕИК), `'c:e:'||...` / `'c:o:'||...`. Authority/company routes use the ЕИК (clean,
 // shareable, stable). A bidder without a valid ЕИК has no clean key, so its slug REVERSIBLY encodes
 // the `name:` id as base64url — no stored slug column, no hash collisions, stable across rebuilds
 // (it depends only on the normalised name). These entities are flagged „непотвърден ЕИК" and may
@@ -51,7 +51,7 @@ export function authorityIdFromSlug(slug: string): string {
   return 'auth:' + slug;
 }
 
-/** contract id (`c:rowid`) → `/contracts/:id` segment (the bare rowid). */
+/** contract id (`c:*`) → `/contracts/:id` segment (the id without the leading `c:`). */
 export function contractSlug(contractId: string): string {
   return contractId.startsWith('c:') ? contractId.slice(2) : contractId;
 }
