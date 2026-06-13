@@ -4,6 +4,7 @@ import { getHomeData } from '@sigma/db';
 import type { Route } from './+types/home';
 import { PageHeader } from '../components/PageHeader';
 import { TotalsStrip } from '../components/TotalsStrip';
+import { RankedBars } from '../components/RankedBars';
 import { publicCache } from '../lib/cache';
 import { coverageEndYear, coveragePartialNote, coverageRange } from '../lib/coverage';
 
@@ -90,23 +91,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <div className="two-col">
           <div>
             <p className="subhead">Министерства, агенции и държавни предприятия</p>
-            <div className="muni-grid">
-              {topMinistries.map((a) => (
-                <Link key={a.slug} to={`/authorities/${a.slug}`}>
-                  {a.name} <span className="num">{money(a.spentEur)}</span>
-                </Link>
-              ))}
-            </div>
+            <RankedBars items={topMinistries} />
           </div>
           <div>
             <p className="subhead">Общини</p>
-            <div className="muni-grid">
-              {topMunicipalities.map((a) => (
-                <Link key={a.slug} to={`/authorities/${a.slug}`}>
-                  {a.name} <span className="num">{money(a.spentEur)}</span>
-                </Link>
-              ))}
-            </div>
+            <RankedBars items={topMunicipalities} />
             <p className="small muted" style={{ marginTop: 8 }}>
               <Link to="/authorities">Виж пълния списък на институциите →</Link>
             </p>
