@@ -3,11 +3,46 @@
 Use this to make a remote environment's D1 match a clean local rebuild **without** re-running the
 heavy ingest remotely.
 
-**One procedure for both environments.** Staging and production use the *same* blue-green swap below —
-only the names/ids differ (see [Environments](#environments)). Running the identical steps on staging
-first makes it a faithful rehearsal of the prod run. The chunked-ship mechanics (`ship-domain` +
-`precompute`) are proven on `sigma-stage` (2026-06-12); blue-green wraps those same mechanics in a
-zero-downtime swap.
+## Principle: the secret is the source of truth, the name is decorative
+
+The deployed worker binds D1 by **`database_id`** — the `SIGMA_D1_ID` value `scripts/wrangler-render.mjs`
+substitutes into `wrangler.deploy.*` — and **never by name**. So "which database is live" is defined
+entirely by `SIGMA_D1_ID`; the D1's *name* is just a label.
+
+Do **not** try to keep a single canonical name like `sigma-stage`. D1 names are **unique per account and
+cannot be renamed** (no `wrangler d1 rename`, no API rename), and a zero-downtime swap needs the old DB
+alive while the new one seeds — which forces a second name anyway. Instead, run **two permanent slots**
+and flip the secret between them.
+
+## Blue/green slots (the standard for both environments)
+
+Each environment has **two long-lived D1 databases** ("slots"). The live one is whichever `SIGMA_D1_ID`
+points at; the other is idle and doubles as the instant rollback. A reseed ships into the idle slot and
+flips the pointer — **never** create/rename/delete on the hot path (after the one-time slot creation).
+
+| env | slots | live pointer | worker / etl / workflow (unchanged across reseeds) |
+|---|---|---|---|
+| **staging** | `sigma-stage-blue` · `sigma-stage-green` | `SIGMA_D1_ID` (staging env secret) | `sigma-stage` / `sigma-etl-stage` / `sigma-refresh-stage` |
+| **production** | `sigma-blue` · `sigma-green` | `SIGMA_D1_ID` (production env secret) | `sigma` / `sigma-etl` / `sigma-refresh` |
+
+Define **both** slots permanently in the migrate config (`apps/web/wrangler.jsonc`, or a dedicated
+`wrangler.migrate.jsonc`) so `wrangler d1 migrations apply <slot>` always resolves — **no per-reseed temp
+binding** (the old runbook's hand-edited `DB_NEXT` step is gone). Only the D1 *id* behind the binding
+moves on a swap; worker/ETL/workflow names never change.
+
+> **Why slots instead of `<name>-next`:** the name stops mattering. Two stable labels + a pointer
+> (`SIGMA_D1_ID`) is the standard blue-green shape; it removes the rename problem entirely (D1 can't be
+> renamed) and the create/delete churn.
+
+> **Production byte-identity nuance.** `docs/deploy.md` keeps the prod render byte-identical when name
+> vars are unset. `SIGMA_D1_NAME` only sets the cosmetic `database_name` (binding is by id), and the
+> guard against overwriting the wrong *worker* comes from `SIGMA_WEB_NAME`/etc., not the DB name — so
+> pointing prod at `sigma-green` just means setting `SIGMA_D1_NAME=sigma-green`. Keep one prod slot named
+> `sigma` (the current DB) so the default-unset render stays byte-identical until prod's first slotted
+> reseed; the partner slot is `sigma-green`.
+
+> **Current state (2026-06-13):** staging live = `sigma-stage-next` (`f4e0880c…`); prod = `sigma`
+> (`2c60b1de…`) — single DBs, not yet on the slot pair above.
 
 ## Why not `import.mjs --remote`
 
@@ -22,84 +57,71 @@ it run `precompute.sql` on the target.
 
 1. A clean local rebuild: `node scripts/import.mjs --reset --from=2020-01-01 --to=<last cached day>`
    (cache-backed; **stop the `:5173` dev server first** — it shares the miniflare D1 and a concurrent
-   bulk load crashes `workerd` with SIGBUS). Verify counts before shipping.
-2. `wrangler` authenticated to the target account (`1a40aa4d0d78bed8ecf036dd22fbfa9f`).
+   bulk load crashes `workerd` with SIGBUS). Verify counts before shipping. (Shipping *from* the sqlite
+   only reads it — the explorer is read-only — so the dev server can stay up during the ship itself.)
+2. `wrangler` authenticated to the target account (`1a40aa4d0d78bed8ecf036dd22fbfa9f`). The deploy/seed
+   token needs Workers Scripts + D1 + Workers R2 Storage + Account Settings (all **Edit**, Account Read).
 3. The local served D1 sqlite path: `apps/web/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<largest>.sqlite`.
 
-## Environments
+## Procedure: blue/green reseed (identical for staging and prod)
 
-Everything below is parameterized by these. The committed `wrangler.jsonc` keeps a zero-UUID dummy id;
-the deploy target is chosen purely by the deploy-time env vars.
+Ship into the **idle** slot while the live slot keeps serving — no empty window, nothing bad gets cached.
 
-| | D1 name | current D1 id | web worker | ETL worker | workflow | deploy name vars |
-|---|---|---|---|---|---|---|
-| **staging** | `sigma-stage` | `d2d437a8-ab5a-4d45-a26f-0ce8e5f98742` | `sigma-stage` | `sigma-etl-stage` | `sigma-refresh-stage` | `SIGMA_WEB_NAME` / `SIGMA_ETL_NAME` / `SIGMA_WORKFLOW_NAME` / `SIGMA_D1_NAME` = the `*-stage` names |
-| **production** | `sigma` | `2c60b1de-995d-41af-9cb6-672d9bcb2d60` | `sigma` | `sigma-etl` | `sigma-refresh` | name vars unset (default to `sigma…`) |
-
-Below, `<env>` = `sigma-stage` or `sigma`; `<env>-next` = the new D1 you create for the swap.
-
-## Procedure: blue-green swap (run identically on staging, then prod)
-
-Build a fully-seeded **second** D1 off to the side, then atomically repoint the workers at it. The old
-D1 serves correct data the whole time, so there is **no empty window and nothing bad ever gets cached**
-(this is why it sidesteps the stale-homepage caveat below).
-
-1. **Create** the new D1: `wrangler d1 create <env>-next`. Note its id (`<next-id>`).
-2. **Config targeting (temporary).** `ship-domain` runs `wrangler d1 migrations apply <env>-next`, which
-   resolves the target from `apps/web/wrangler.jsonc` (only defines `sigma` with a dummy id). Add a
-   **temporary** `d1_databases` entry naming `<env>-next` with its real id so migrations-apply resolves;
-   leave the primary `sigma` binding untouched. **Remove it before any `pnpm deploy`.**
-   ```jsonc
-   { "binding": "DB_NEXT", "database_name": "<env>-next",
-     "database_id": "<next-id>", "migrations_dir": "../../packages/db/migrations" }
-   ```
-   (Plain `wrangler d1 execute <name> --remote` resolves by account name already; only `migrations apply`
-   needs the config entry.)
-3. **Seed `<env>-next` fully** while the old `<env>` keeps serving — no live impact, nothing points at it:
-   `SIGMA_D1_NAME=<env>-next node scripts/ship-domain.mjs --work-db=<local.sqlite> --remote --yes`.
-   It applies migrations, ships the domain tables in FK-dependency order into the empty schema, and runs
-   `precompute.sql` (rebuilds rollups + FTS `search_index`; never ship FTS content via a sqlite dump).
-   ~15-20 min.
-4. **Verify `<env>-next`** against local: `contracts`, `date_flag='signed_after_publication'`,
+1. **First adoption only:** `wrangler d1 create <env>-blue` and `<env>-green`, and add both as permanent
+   `d1_databases` entries in the migrate config. Thereafter skip this step.
+2. **Identify the idle slot.** `SIGMA_D1_ID` (the env secret) names the live slot; the other is idle.
+   `wrangler d1 list` for ids.
+3. **Empty the idle slot** (children-first, FKs deferred) — safe, nothing points at it, zero live impact.
+   `wrangler d1 execute <idle-slot> --remote --file wipe.sql` (the wipe.sql below). This avoids the
+   `--replace` FK-ordering hazard and means you ship into a clean schema.
+4. **Ship into the idle slot:**
+   `SIGMA_D1_NAME=<idle-slot> node scripts/ship-domain.mjs --work-db=<local.sqlite> --remote --yes`.
+   It applies migrations (resolves because the slot is in the config), ships the domain tables in
+   FK-dependency order, and runs `precompute.sql` (rebuilds rollups + FTS `search_index` — never ship FTS
+   content via a sqlite dump). ~15-20 min. `ship-domain` verifies every table's row count against source.
+5. **Verify the idle slot** against local: `contracts`, `date_flag='signed_after_publication'`,
    `amendments`, the six core tables, and crucially **`home_totals` has `id=1`** with real values (the
-   homepage loader reads `home_totals WHERE id = 1`). Remove the temp binding; `git status` clean.
-5. **Atomic switch.** Redeploy web + ETL pointed at `<next-id>` (per-env name vars from the table):
-   `CLOUDFLARE_ACCOUNT_ID=… SIGMA_D1_ID=<next-id> [name vars] pnpm run deploy` (web) and
-   `… pnpm --filter @sigma/etl run deploy` (ETL). `env.DB` repoints in one shot. Then
-   `wrangler workflows trigger <env-workflow>` to advance the new D1 to the current day.
-6. **Verify live** (date-flag badge, year filter, pentest fixes, homepage — fresh, no `0`s).
-7. **Roll forward / back.** Keep old `<env>` as instant rollback (redeploy with the old id). **Update
-   wherever `SIGMA_D1_ID` is stored** (CI secret / env) to `<next-id>` so later deploys keep targeting it.
-   Delete the old D1 once confident.
+   homepage loader reads `home_totals WHERE id = 1`).
+6. **Flip the pointer.** Set `SIGMA_D1_ID` → idle slot's id and `SIGMA_D1_NAME` → its name (CI env secret/
+   var, or local env for a manual deploy). Redeploy web + ETL, then
+   `wrangler workflows trigger <env-workflow>` to advance the new slot to the current day.
+7. **Verify live** (homepage totals fresh, date-flag badge, year filter, pentest fixes). On a custom
+   domain, **purge the edge cache** after the flip (see caveat); on `*.workers.dev` it self-heals at TTL.
+8. **Rollback window.** The previous slot stays intact as instant rollback — flip `SIGMA_D1_ID` back and
+   redeploy. It is **overwritten by the next reseed**, so the rollback is one-reseed deep. Never delete a
+   slot on the hot path.
 
-## Fallback: in-place wipe (only if a second D1 can't be provisioned)
+### wipe.sql (empty a slot, children-first)
 
-Use this *only* when blue-green isn't possible (e.g. can't create a second D1). It is **not** the default
-for either env on a live site: it has a **~20-30 min degraded window**, an **unpurgeable homepage-`0`s
-cache** for up to ~1h on `*.workers.dev` (a redeploy won't clear it — see the caveat below), and needs a
-maintenance window away from the 6h ETL ticks (00/06/12/18 UTC). Steps (verify at each):
+```sql
+PRAGMA defer_foreign_keys=ON;
+DELETE FROM search_index; DELETE FROM flow_pairs; DELETE FROM facet_counts;
+DELETE FROM sector_totals; DELETE FROM authority_totals; DELETE FROM company_totals;
+DELETE FROM home_totals; DELETE FROM amendments; DELETE FROM risk_scores;
+DELETE FROM contracts; DELETE FROM lots; DELETE FROM tenders; DELETE FROM parties;
+DELETE FROM bidders; DELETE FROM authorities; DELETE FROM data_freshness;
+DELETE FROM fx_rates; DELETE FROM nuts_regions;
+```
+
+> **`ship-domain` migration nit.** It runs `wrangler d1 migrations apply <name>`, which needs the slot in
+> the config (hence permanent slot bindings). Alternatively it could apply the single `0000_init` via
+> `wrangler d1 execute <name> --remote --file …`, which resolves by name and needs no binding — a possible
+> simplification that would drop the config requirement entirely.
+
+## Fallback: in-place reseed (only to keep one fixed name, accepts downtime)
+
+Use this *only* when you deliberately want a single permanent name on a throwaway env (staging) and
+accept the cost — it is **not** the default. It has a **~20-30 min degraded window**, an **unpurgeable
+homepage-`0`s cache** for up to ~1h on `*.workers.dev`, and needs a maintenance window away from the 6h
+ETL ticks (00/06/12/18 UTC). Prefer blue/green slots. Steps (verify at each):
 
 1. **Backup:** `wrangler d1 export <env> --remote --output=/tmp/<env>-backup.sql`.
-2. **Schema parity** (if a column was added, e.g. `date_flag`): `wrangler d1 execute <env> --remote
-   --command "ALTER TABLE contracts ADD COLUMN date_flag …; CREATE INDEX …"` (resolves by name; guard if
-   it exists). `migrations apply` won't re-add a column folded into an already-applied `0000_init`.
-3. **Config targeting:** as in blue-green step 2, but for `<env>` — only `migrations apply` needs the real
-   id temporarily set; `execute` resolves by name. Revert after.
-4. **Wipe `<env>`** (children-first, FKs deferred) — `wrangler d1 execute <env> --remote --file wipe.sql`:
-   ```sql
-   PRAGMA defer_foreign_keys=ON;
-   DELETE FROM search_index; DELETE FROM flow_pairs; DELETE FROM facet_counts;
-   DELETE FROM sector_totals; DELETE FROM authority_totals; DELETE FROM company_totals;
-   DELETE FROM home_totals; DELETE FROM amendments; DELETE FROM risk_scores;
-   DELETE FROM contracts; DELETE FROM lots; DELETE FROM tenders; DELETE FROM parties;
-   DELETE FROM bidders; DELETE FROM authorities; DELETE FROM data_freshness;
-   DELETE FROM fx_rates; DELETE FROM nuts_regions;
-   ```
-   (`ship-domain --replace` does a per-table `DELETE`+`INSERT`; without a clean wipe first, replacing one
-   table while others still hold FK references fails with `FOREIGN KEY constraint failed`.)
-5. **Ship:** `SIGMA_D1_NAME=<env> node scripts/ship-domain.mjs --work-db=<local.sqlite> --remote --yes
-   --replace` (+ precompute). Verify (step 4 above). Revert the temp binding.
-6. **Deploy** web then ETL (per-env vars), then trigger the workflow; verify live.
+2. **Schema parity** (if a column was added): `wrangler d1 execute <env> --remote --command "ALTER TABLE
+   …; CREATE INDEX …"` (resolves by name; guard if it exists).
+3. **Wipe `<env>`** with the wipe.sql above (`wrangler d1 execute <env> --remote --file wipe.sql`).
+4. **Ship:** `SIGMA_D1_NAME=<env> node scripts/ship-domain.mjs --work-db=<local.sqlite> --remote --yes
+   --replace` (+ precompute). Verify.
+5. **Deploy** web then ETL, then trigger the workflow; verify live.
 
 ## Schema-only / additive change (no full reseed, no downtime)
 
@@ -114,19 +136,25 @@ UPDATE contracts SET date_flag='signed_after_publication'
     AND signed_at > date(published_at,'+2 day');
 ```
 
-Run via `wrangler d1 execute <env> --remote --file …` (resolves by name — no temp binding, no
-`ship-domain`), **then** deploy web (after the column exists, so `details.ts`'s `date_flag` select is
-valid) and ETL. The trade vs. a full reseed: the env keeps its own ETL-maintained rows rather than
-becoming byte-identical to a local rebuild.
+Run via `wrangler d1 execute <env> --remote --file …` (resolves by name — no binding, no `ship-domain`),
+**then** deploy web (after the column exists, so `details.ts`'s `date_flag` select is valid) and ETL. The
+trade vs. a full reseed: the env keeps its own ETL-maintained rows rather than becoming byte-identical to
+a local rebuild.
 
-## Caveat: stale homepage after an in-place reseed (workers.dev)
+## Caveat: stale homepage and edge-cache purge
 
-Relevant to the **in-place fallback only** — blue-green avoids it. Pages served with
-`Cache-Control: s-maxage=3600` are edge-cached by Cloudflare keyed on the **client URL** (e.g. `/`) and
-served **without invoking the worker** until the TTL expires. So a page whose cache was populated during
-the empty window keeps serving stale (e.g. a `0`-valued homepage) for up to ~1h. **A worker redeploy does
-NOT clear it** — the worker's `DEPLOY_TAG` only busts its internal `caches.default`, which sits behind
-this edge cache. On `*.workers.dev` there is **no cache-purge access**, so it self-heals at `s-maxage`
-expiry (then `stale-while-revalidate` refreshes on the next request). Data/loaders are correct meanwhile
-(verify via an uncached route, e.g. a `*.csv` export). On a custom domain this is purgeable via the
-Cloudflare cache API.
+Pages served with `Cache-Control: s-maxage=3600` are edge-cached by Cloudflare keyed on the **client URL**
+(e.g. `/`) and served **without invoking the worker** until the TTL expires. Blue/green avoids ever
+caching a bad page (the old slot serves correct data throughout). After an **in-place** reseed a page
+cached during the empty window can serve stale (e.g. `0`s) for up to ~1h.
+
+**A worker redeploy does NOT clear it** — the worker's `DEPLOY_TAG` only busts its internal
+`caches.default`, which sits *behind* this edge cache.
+
+- **On `*.workers.dev`:** there is **no cache-purge access** (it isn't a zone you control), so it
+  self-heals at `s-maxage` expiry, then `stale-while-revalidate` refreshes on the next request. Data is
+  correct meanwhile — verify via an uncached route (e.g. a `*.csv` export).
+- **On a custom domain** (e.g. `sigma-stage.midt.bg` — the `midt.bg` zone exists in the account): the
+  cache **is** purgeable on demand via the dashboard (Caching → Purge) or
+  `POST /zones/{zone_id}/purge_cache` (`purge_everything` or by URL). Recommended for staging so a reseed
+  is instantly visible.
