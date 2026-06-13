@@ -5,8 +5,8 @@
 // `wrangler deploy` needs the real IDs — this script substitutes them from env vars and
 // writes a sibling `wrangler.deploy.<ext>` that the package `deploy` script passes via
 // `--config`. Optional deploy-time name env vars (`SIGMA_WEB_NAME`, `SIGMA_ETL_NAME`,
-// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`) explicitly override resource names for alternate
-// environments while leaving committed names unchanged when unset.
+// `SIGMA_WORKFLOW_NAME`, `SIGMA_D1_NAME`, `SIGMA_CSV_CACHE_NAME`) explicitly override resource
+// names for alternate environments while leaving committed names unchanged when unset.
 //
 // usage: node scripts/wrangler-render.mjs <path/to/wrangler.toml|jsonc>
 
@@ -49,8 +49,9 @@ if (ext === '.json' || ext === '.jsonc') {
   const names = {
     webName: process.env.SIGMA_WEB_NAME || '',
     d1Name: process.env.SIGMA_D1_NAME || '',
+    csvCacheName: process.env.SIGMA_CSV_CACHE_NAME || '',
   };
-  if (names.webName || names.d1Name) {
+  if (names.webName || names.d1Name || names.csvCacheName) {
     out = renderJson(out, names);
   }
 } else if (ext === '.toml') {
@@ -74,6 +75,11 @@ function renderJson(text, names) {
   if (names.d1Name && Array.isArray(obj.d1_databases)) {
     for (const db of obj.d1_databases) {
       if (db && typeof db === 'object') db.database_name = names.d1Name;
+    }
+  }
+  if (names.csvCacheName && Array.isArray(obj.r2_buckets)) {
+    for (const bucket of obj.r2_buckets) {
+      if (bucket && typeof bucket === 'object') bucket.bucket_name = names.csvCacheName;
     }
   }
   return `${JSON.stringify(obj, null, 2)}\n`;

@@ -72,6 +72,7 @@ jobs:
       SIGMA_ETL_NAME: ${{ vars.SIGMA_ETL_NAME }}
       SIGMA_WORKFLOW_NAME: ${{ vars.SIGMA_WORKFLOW_NAME }}
       SIGMA_D1_NAME: ${{ vars.SIGMA_D1_NAME }}
+      SIGMA_CSV_CACHE_NAME: ${{ vars.SIGMA_CSV_CACHE_NAME }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -108,10 +109,11 @@ jobs:
               fail=1
             fi
           }
-          check "$SIGMA_WEB_NAME"      sigma          SIGMA_WEB_NAME
-          check "$SIGMA_ETL_NAME"      sigma-etl      SIGMA_ETL_NAME
-          check "$SIGMA_WORKFLOW_NAME" sigma-refresh  SIGMA_WORKFLOW_NAME
-          check "$SIGMA_D1_NAME"       sigma          SIGMA_D1_NAME
+          check "$SIGMA_WEB_NAME"       sigma           SIGMA_WEB_NAME
+          check "$SIGMA_ETL_NAME"       sigma-etl       SIGMA_ETL_NAME
+          check "$SIGMA_WORKFLOW_NAME"  sigma-refresh   SIGMA_WORKFLOW_NAME
+          check "$SIGMA_D1_NAME"        sigma           SIGMA_D1_NAME
+          check "$SIGMA_CSV_CACHE_NAME" sigma-csv-cache SIGMA_CSV_CACHE_NAME
           [ "$fail" = 0 ] || { echo "Refusing to deploy '${{ needs.detect.outputs.env }}' with production resource names."; exit 1; }
 
       - name: Typecheck

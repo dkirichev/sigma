@@ -14,7 +14,7 @@ deploys to any number of targets (production, staging, a second account) with no
 
 | | Production | Staging | Production-v2 (future) |
 |---|---|---|---|
-| Web worker → URL | `sigma` → **sigma.midt.bg** (Access-gated; workers.dev off) | `sigma-stage` → sigma-stage.obecto.workers.dev (Access-gated) | new name, 3rd URL |
+| Web worker → URL | `sigma` → **sigma.midt.bg** (Access-gated; workers.dev off) | `sigma-stage` → sigma-stage.cf-midt.workers.dev (Access-gated) | new name, 3rd URL |
 | ETL worker | `sigma-etl` (cron) | `sigma-etl-stage` (cron) | — |
 | Workflow (account-global) | `sigma-refresh` | `sigma-refresh-stage` | — |
 | D1 database | `sigma` | `sigma-stage` (**separate** DB) | own DB |
@@ -22,7 +22,7 @@ deploys to any number of targets (production, staging, a second account) with no
 | GitHub Environment | `production` | `staging` | `production` (repointed) |
 
 Staging/dev rely on the automatic `workers.dev` hostname (naming the worker `sigma-stage` is all it
-takes to serve `sigma-stage.obecto.workers.dev` — no routes to configure). **Production**
+takes to serve `sigma-stage.cf-midt.workers.dev` — no routes to configure). **Production**
 additionally gets the `sigma.midt.bg` custom domain and a Cloudflare Access gate before launch — see
 *Gate before launch* (§6) below.
 
@@ -54,6 +54,7 @@ in scope**:
 | `SIGMA_ETL_NAME` | *(unset → `sigma-etl`)* | `sigma-etl-stage` | render → etl worker `name` |
 | `SIGMA_WORKFLOW_NAME` | *(unset → `sigma-refresh`)* | `sigma-refresh-stage` | render → `[[workflows]] name` |
 | `SIGMA_D1_NAME` | *(unset → `sigma`)* | `sigma-stage` | render → `database_name` **+** provisioning/seed scripts |
+| `SIGMA_CSV_CACHE_NAME` | *(unset → `sigma-csv-cache`)* | `sigma-csv-cache-stage` | render → web worker `r2_buckets[].bucket_name` |
 
 Every name var defaults to its committed value, so with all of them unset the render is
 **byte-identical to today** (only `database_id` substituted) — the production-safety invariant.
@@ -107,8 +108,11 @@ secrets) and for an optional manual approval gate on production.
 ### Minimal API-token scopes
 
 A custom token needs only these **Account**-level permissions (it cannot be scoped to a single
-Worker — see *Notes → Access scoping*): Workers Scripts **Edit**, D1 **Edit**, Workflows **Edit**,
-Account Settings **Read**. The same scopes cover both provisioning and deploy.
+Worker — see *Notes → Access scoping*): Workers Scripts **Edit**, D1 **Edit**, Workers R2 Storage
+**Edit** (the explorer binds the `sigma-csv-cache` R2 bucket), and Account Settings **Read**. The
+same scopes cover both provisioning and deploy. (Workflows ship as part of the `sigma-etl` Worker,
+so no separate **Workflows** permission is required — it's covered by Workers Scripts: Edit; some
+dashboards don't list a standalone Workflows scope.)
 
 ## 1. Provision the D1 (per environment, local)
 
@@ -208,13 +212,13 @@ the matching Environment, then it guards on the credentials, type-checks, and ru
 > CI is the intended path so credentials stay off laptops.
 
 Deploying `apps/web` overwrites whatever currently serves that worker name (for production, the
-static v1 mock at `sigma.obecto.workers.dev`) with the live SSR explorer. The ETL is necessarily a
+static v1 mock at `sigma.cf-midt.workers.dev`) with the live SSR explorer. The ETL is necessarily a
 separate worker — it carries the cron trigger and the `RefreshWorkflow` class.
 
 ## 5. Verify
 
-- Open the worker URL (e.g. `https://sigma.obecto.workers.dev/` or
-  `https://sigma-stage.obecto.workers.dev/`) — real totals (~190k contracts · ~50.8 bn €).
+- Open the worker URL (e.g. `https://sigma.cf-midt.workers.dev/` or
+  `https://sigma-stage.cf-midt.workers.dev/`) — real totals (~190k contracts · ~50.8 bn €).
 - Dashboard → **Workflows** → the env's refresh Workflow (`sigma-refresh` / `sigma-refresh-stage`)
   is listed. There is no public HTTP trigger; manual/backfill runs go through the Dashboard or
   `wrangler workflows trigger <name>`. The cron (`0 */6 * * *`) then refreshes unattended.
@@ -320,8 +324,10 @@ staging schedule (e.g. `30 */6 * * *`) so it doesn't hit the source at the same 
 - **Page caching** is done via `Cache-Control` headers + the per-colo Cache API
   ([apps/web/app/lib/cache.ts](../apps/web/app/lib/cache.ts)) — no KV namespace needed. The Worker
   normalizes cache keys to the query params the loaders consume, so unknown query params collapse
-  onto the same cached entry instead of forcing fresh D1 aggregation. D1 is the only Cloudflare
-  resource Sigma provisions. Full CSV exports are streamed without edge caching and are protected by
+  onto the same cached entry instead of forcing fresh D1 aggregation. The Cloudflare resources Sigma
+  provisions are D1 **plus the `sigma-csv-cache` R2 bucket** the explorer binds (`CSV_CACHE`) for
+  CSV-export caching — both are env-rendered (`SIGMA_D1_*` / `SIGMA_CSV_CACHE_NAME`) so staging and
+  production never share storage. CSV exports are not edge-cached and are protected by
   the `CSV_RATE_LIMITER` Workers Rate Limiting binding (10/60s); `/companies` and `/authorities`
   cache misses are protected by `AGG_RATE_LIMITER` (30/60s).
 - **Security remediation notes.** Worker route matching normalizes decoded/lowercased paths and
