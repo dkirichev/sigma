@@ -4,6 +4,7 @@ import { rateLimitAggregationRoute } from './aggregation-rate-limit';
 import { cacheKey } from './cache-key';
 import { rateLimitCsvExport } from './csv-rate-limit';
 import { optionsResponse, redirectCleartextHttp, setAllowHeader } from './http';
+import { withRequestLog } from './request-log';
 
 declare module 'react-router' {
   export interface AppLoadContext {
@@ -25,7 +26,7 @@ const requestHandler = createRequestHandler(
 const edgeCache = (caches as unknown as { default: Cache }).default;
 
 // Evaluated at module-init time, i.e. once per worker deploy. Prefixed into the cache key so a fresh
-// deploy automatically invalidates the per-colo edge cache without a manual purge — old entries are
+// deploy automatically invalidates the per-colo edge cache without a manual purge; old entries are
 // orphaned and TTL out, new requests populate under the new tag. The Cache API has no namespace
 // concept, so we synthesise one by mutating the cache-key URL (the served response is unaffected).
 const DEPLOY_TAG = Date.now().toString(36);
@@ -86,49 +87,53 @@ async function hardenResponse(response: Response, cacheable: boolean): Promise<R
 
 export default {
   async fetch(request, env, ctx) {
-    const httpsRedirect = redirectCleartextHttp(request, import.meta.env.PROD);
-    if (httpsRedirect) return httpsRedirect;
-
-    if (request.method === 'OPTIONS') return optionsResponse(import.meta.env.PROD);
-
-    const csvRateLimitResponse = await rateLimitCsvExport(request, env, import.meta.env.PROD);
-    if (csvRateLimitResponse) return csvRateLimitResponse;
-
-    // Per-colo edge cache (Cache API) for GET responses that opt in via Cache-Control: s-maxage=N
-    // (publicCache() in apps/web/app/lib/cache.ts). Deterministic and independent of platform
-    // HTML-cache heuristics on *.workers.dev; TTL is driven by s-maxage. The X-Edge-Cache:
-    // HIT|MISS|BYPASS header lets `curl -I` verify which path a request took.
-    const key = request.method === 'GET' ? cacheKey(request, DEPLOY_TAG) : null;
-    if (key) {
-      const cached = await edgeCache.match(key);
-      if (cached) {
-        const headers = new Headers(cached.headers);
-        applySecurityHeaders(headers, baseSecurityHeaders(import.meta.env.PROD));
-        headers.set('X-Edge-Cache', 'HIT');
-        return new Response(cached.body, {
-          status: cached.status,
-          statusText: cached.statusText,
-          headers,
-        });
-      }
-    }
-
-    const aggregationRateLimitResponse = await rateLimitAggregationRoute(
-      request,
-      env,
-      import.meta.env.PROD,
-    );
-    if (aggregationRateLimitResponse) return aggregationRateLimitResponse;
-
-    const response = await requestHandler(request, { cloudflare: { env, ctx } });
-    const cacheable =
-      key !== null &&
-      response.ok &&
-      isAnonymous(request, response) &&
-      /s-maxage=\d/.test(response.headers.get('Cache-Control') ?? '');
-    const hardened = await hardenResponse(response, cacheable);
-    if (cacheable) ctx.waitUntil(edgeCache.put(key, hardened.clone()));
-    hardened.headers.set('X-Edge-Cache', cacheable ? 'MISS' : 'BYPASS');
-    return hardened;
+    return withRequestLog(request, env, ctx, handleRequest);
   },
 } satisfies ExportedHandler<Env>;
+
+async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const httpsRedirect = redirectCleartextHttp(request, import.meta.env.PROD);
+  if (httpsRedirect) return httpsRedirect;
+
+  if (request.method === 'OPTIONS') return optionsResponse(import.meta.env.PROD);
+
+  const csvRateLimitResponse = await rateLimitCsvExport(request, env, import.meta.env.PROD);
+  if (csvRateLimitResponse) return csvRateLimitResponse;
+
+  // Per-colo edge cache (Cache API) for GET responses that opt in via Cache-Control: s-maxage=N
+  // (publicCache() in apps/web/app/lib/cache.ts). Deterministic and independent of platform
+  // HTML-cache heuristics on *.workers.dev; TTL is driven by s-maxage. The X-Edge-Cache:
+  // HIT|MISS|BYPASS header lets `curl -I` verify which path a request took.
+  const key = request.method === 'GET' ? cacheKey(request, DEPLOY_TAG) : null;
+  if (key) {
+    const cached = await edgeCache.match(key);
+    if (cached) {
+      const headers = new Headers(cached.headers);
+      applySecurityHeaders(headers, baseSecurityHeaders(import.meta.env.PROD));
+      headers.set('X-Edge-Cache', 'HIT');
+      return new Response(cached.body, {
+        status: cached.status,
+        statusText: cached.statusText,
+        headers,
+      });
+    }
+  }
+
+  const aggregationRateLimitResponse = await rateLimitAggregationRoute(
+    request,
+    env,
+    import.meta.env.PROD,
+  );
+  if (aggregationRateLimitResponse) return aggregationRateLimitResponse;
+
+  const response = await requestHandler(request, { cloudflare: { env, ctx } });
+  const cacheable =
+    key !== null &&
+    response.ok &&
+    isAnonymous(request, response) &&
+    /s-maxage=\d/.test(response.headers.get('Cache-Control') ?? '');
+  const hardened = await hardenResponse(response, cacheable);
+  if (cacheable) ctx.waitUntil(edgeCache.put(key, hardened.clone()));
+  hardened.headers.set('X-Edge-Cache', cacheable ? 'MISS' : 'BYPASS');
+  return hardened;
+}
