@@ -3,7 +3,7 @@ set -euo pipefail
 
 echo "==> Devcontainer post-create"
 
-sudo chown -R node:node /workspaces/sigma-prototype/node_modules /home/node/.pnpm-store 2>/dev/null || true
+sudo chown -R node:node /workspaces/sigma/node_modules /home/node/.pnpm-store 2>/dev/null || true
 
 echo "==> Enabling corepack + pnpm"
 corepack enable

@@ -1,346 +1,362 @@
-# AI Assistant — design spec
+# AI асистент — дизайн спецификация
 
-> The conversational analysis layer over СИГМА: a chat assistant that searches the
-> procurement data and the source registries, runs web search, and renders **advanced
-> reports** (tables + graphics) that read like native pages of the site. Built on **BgGPT**
-> (text + voice). Design prose in English; all user-facing copy in **Bulgarian**.
+> Разговорният аналитичен слой върху СИГМА: chat асистент, който търси в данните за
+> обществените поръчки и в изходните регистри, прави уеб търсене и рендира **разширени
+> справки** (таблици + графики), които изглеждат като естествени страници на сайта. Изграден
+> върху **BgGPT** (текст + глас). Дизайнерската проза е на английски в оригинала; целият
+> потребителски текст е на **български**.
 >
-> This doc captures the agreed design. All eight sections decided 2026-06-07; **no code yet** —
-> implementation is sequenced in §8.
+> Този документ описва договорения дизайн. Всичките осем раздела са решени на 2026-06-07;
+> **все още няма код** — имплементацията е подредена на фази в §8.
 
-## Givens (fixed inputs, not up for design)
+## Дадености (фиксирани входни условия, не подлежат на дизайн)
 
-- **Model: BgGPT** for both text and voice — OpenAI-compatible API at `https://api.bggpt.ai/v1`,
-  authenticated with the `BGGPT_API_KEY` secret (kept in `.env` / `wrangler secret`, never
-  committed). Text model `bggpt-gemma-3-27b-fp8` (FP8-quantized; supports streaming and
-  tool/function calling). Speech model `bggpt-whisper-large-v3` at `POST /v1/audio/transcriptions`
-  (formats `flac/mp3/mp4/m4a/ogg/wav/webm`, max 25 MB; `language` as ISO-639-1, e.g. `bg`). Rate
-  limits: text 20 req/min on the default plan (our working ceiling is 120 — see below);
-  transcription 360 req/min.
-- **Embedded in the site**, not a separate product — reports use the site's own components and
-  are part of the same Worker/codebase.
-- **Public open data.** The underlying corpus is public procurement data, so report contents are
-  not sensitive; the constraints are quota and abuse, not data confidentiality.
-- **Agentic.** The assistant works as an agent with tools: read-only SQL over the database, web
-  search, and search across the known data sources.
+- **Модел: BgGPT** както за текст, така и за глас — OpenAI-съвместим API на
+  `https://api.bggpt.ai/v1`, с автентикация чрез секрета `BGGPT_API_KEY` (държи се в `.env` /
+  `wrangler secret`, никога не се commit-ва). Текстов модел `bggpt-gemma-3-27b-fp8` (FP8-квантуван;
+  поддържа streaming и tool/function calling). Speech модел `bggpt-whisper-large-v3` на
+  `POST /v1/audio/transcriptions` (формати `flac/mp3/mp4/m4a/ogg/wav/webm`, макс. 25 MB; `language`
+  като ISO-639-1, напр. `bg`). Rate limits: текст 20 заявки/мин на стандартния план (работният ни
+  таван е 120 — виж по-долу); транскрипция 360 заявки/мин.
+- **Вграден в сайта**, не отделен продукт — справките използват собствените компоненти на сайта
+  и са част от същия Worker/кодова база.
+- **Публични отворени данни.** Базовият корпус са публични данни за обществени поръчки, така че
+  съдържанието на справките не е чувствително; ограниченията са quota и злоупотреба, не
+  поверителност на данните.
+- **Agentic.** Асистентът работи като агент с инструменти: read-only SQL върху базата, уеб
+  търсене и търсене в познатите източници на данни.
 
 ---
 
-## 1. Product surface & layout — *Decided 2026-06-07*
+## 1. Продуктова повърхност и оформление — *Решено 2026-06-07*
 
-A **global chat dock**, always available like the KolkoStruva assistant, with reports opening as
-first-class pages of the site. The assistant is not a place you navigate *to*; it is always
-present, and the *reports* are the navigable artifacts.
+**Глобален chat dock**, винаги наличен, със справки, които се отварят като пълноправни страници на
+сайта. Асистентът не е място, към което *навигираш*; той е винаги наличен, а *справките* са
+навигируемите артефакти.
 
-- **Global dock.** Mounted once in the site root layout ([root.tsx](../../apps/web/app/root.tsx)),
-  available on every route. Open by default, collapsible to an edge tab; state remembered.
-  - Desktop: right-hand rail alongside the page.
-  - Mobile: full-screen sheet, toggled from a launcher.
-- **No `/assistant` route.** With the dock always present there is nothing to navigate to. The
-  welcome / empty state (a short greeting + 3–4 example prompts, e.g. „Покажи най-рисковите
-  поръчки в строителството за 2023") lives **inside the dock**.
-- **Reports as compact cards in the transcript.** When the agent finishes a report it drops a
-  compact card into the chat — title, one headline stat or the first block, and an „Отвори"
-  action. The card is what persists in history; it is *not* the full heavy render.
-- **Full report in the main area at `/reports/:id`.** Each report is an addressable, shareable
-  page rendered server-side with the existing site components
+- **Глобален dock.** Монтиран еднократно в root layout-а на сайта
+  ([root.tsx](../../apps/web/app/root.tsx)), наличен на всеки route. Отворен по подразбиране,
+  свиваем до edge таб; състоянието се помни.
+  - Десктоп: десен страничен панел до страницата.
+  - Мобилно: пълноекранен sheet, превключван от launcher.
+- **Без `/assistant` route.** При винаги наличен dock няма към какво да се навигира. Welcome /
+  empty state-ът (кратък поздрав + 3–4 примерни prompt-а, напр. „Покажи най-рисковите поръчки в
+  строителството за 2023") живее **вътре в dock-а**.
+- **Справките като компактни карти в транскрипта.** Когато агентът завърши справка, той пуска
+  компактна карта в чата — заглавие, една водеща статистика или първия блок, и действие „Отвори".
+  Картата е това, което остава в историята; тя *не* е пълният тежък render.
+- **Пълната справка в основната зона на `/reports/:id`.** Всяка справка е адресируема, споделима
+  страница, рендирана server-side с вече съществуващите компоненти на сайта
   ([DataTable](../../apps/web/app/components/DataTable.tsx),
   [StackedBar](../../apps/web/app/components/StackedBar.tsx),
   [SankeyDiagram](../../apps/web/app/components/SankeyDiagram.tsx),
   [FactsList](../../apps/web/app/components/FactsList.tsx),
-  [TotalsStrip](../../apps/web/app/components/TotalsStrip.tsx)). So a report reads like a richer
-  search-results page, gets full width for tables/Sankeys, and is bookmarkable.
-- **Re-open from history.** Producing a report auto-opens it in the main area and appends its
-  card. Clicking any card — current or scrolled-back — reopens that report at its `/reports/:id`.
-- **Mobile is the same flow, stacked.** Chat is full-screen; opening a report pushes a
-  full-screen report view; back returns to the chat. One block-spec renders both the compact
-  card and the full page, so there is a single render path, not two UIs.
+  [TotalsStrip](../../apps/web/app/components/TotalsStrip.tsx)). Така справката изглежда като
+  по-богата страница с резултати от търсене, получава пълна ширина за таблици/Sankey диаграми и е
+  bookmark-ваема.
+- **Повторно отваряне от историята.** Произвеждането на справка я отваря автоматично в основната
+  зона и добавя нейната карта. Клик върху която и да е карта — текуща или превъртяна назад —
+  отново отваря тази справка на нейния `/reports/:id`.
+- **Мобилното е същият поток, на стек.** Чатът е пълноекранен; отварянето на справка избутва
+  пълноекранен изглед на справката; назад връща към чата. Една block-спецификация рендира както
+  компактната карта, така и пълната страница, така че има един път на рендиране, не два UI-я.
 
 ```
-DESKTOP                                   MOBILE
+ДЕСКТОП                                    МОБИЛНО
 ┌───────────────────────────┬─────────┐   ┌───────────────┐   ┌───────────────┐
-│  MAIN AREA                 │  CHAT   │   │  CHAT (full)  │   │ REPORT (full) │
-│  full report  /reports/:id │  ▸ msg  │   │  ▸ msg        │   │  table        │
-│  (table / bar / sankey)    │  ▸ [card]│  │  ▸ [card] →   │ → │  bar / sankey │
-│  shareable URL             │  ▸ msg  │   │  ▸ msg        │   │  ‹ назад      │
+│  ОСНОВНА ЗОНА              │  ЧАТ    │   │  ЧАТ (пълен)  │   │ СПРАВКА (пълна)│
+│  пълна справка /reports/:id│  ▸ съобщ│   │  ▸ съобщ      │   │  таблица       │
+│  (таблица / bar / sankey)  │  ▸ [карта]│ │  ▸ [карта] →  │ → │  bar / sankey  │
+│  споделим URL              │  ▸ съобщ│   │  ▸ съобщ      │   │  ‹ назад       │
 └───────────────────────────┴─────────┘   └───────────────┘   └───────────────┘
 ```
 
-## 2. Agent runtime & model — *Decided 2026-06-07*
+## 2. Agent runtime и модел — *Решено 2026-06-07*
 
-### Where it runs — one Worker
+### Къде се изпълнява — един Worker
 
-Everything ships inside **`apps/web`** — the existing React Router v7 SSR Worker. One Worker for
-the entire web; no separate assistant deployment.
+Всичко се качва вътре в **`apps/web`** — вече съществуващия React Router v7 SSR Worker. Един Worker
+за целия web; без отделен deployment за асистента.
 
-- The chat endpoints, the agent loop, the SQL tool, the BgGPT/Whisper proxies, and report
-  rendering all run as **server-side resource routes / actions** within `apps/web`.
-- D1 is already bound there as `env.DB`. We **add an R2 binding** for report storage.
-- The stub [apps/assistant](../../apps/assistant/src/index.ts) and
-  [apps/api](../../apps/api/src/index.ts) Workers are **retired as cleanup** — they are redundant
-  placeholders.
+- Chat endpoint-ите, agent loop-ът, SQL инструментът, BgGPT/Whisper прокситата и рендирането на
+  справки се изпълняват като **server-side resource routes / actions** в рамките на `apps/web`.
+- D1 вече е bind-нат там като `env.DB`. **Добавяме R2 binding** за съхранение на справките.
 
 ### Agent loop — Vercel AI SDK
 
-- Library: the **Vercel AI SDK** (`ai` + `@ai-sdk/openai`), with the provider pointed at BgGPT's
-  base URL and `BGGPT_API_KEY`. It gives a first-class tool-calling loop, streaming, and React
-  chat hooks, and is Workers-friendly.
-- **Not LangChain** — heavy on Workers and its abstractions fight this stack.
-- Text model: `bggpt-gemma-3-27b-fp8` (the only model available to us), with tool calling.
+- Библиотека: **Vercel AI SDK** (`ai` + `@ai-sdk/openai`), с provider насочен към base URL-а на
+  BgGPT и `BGGPT_API_KEY`. Дава пълноправен tool-calling loop, streaming и React chat hooks, и е
+  Workers-friendly.
+- **Не LangChain** — тежък за Workers и абстракциите му се борят с този стек.
+- Текстов модел: `bggpt-gemma-3-27b-fp8` (единственият достъпен за нас модел), с tool calling.
 
 ### Streaming
 
-- **Stream when possible.** Stream the assistant's conversational text to the dock via SSE
-  (`streamText`); BgGPT supports OpenAI-style streaming.
-- Tool calls (SQL, web search) execute server-side mid-stream; the **report card renders when the
-  final report artifact is ready** (the report block-spec is finalized via a tool/structured step
-  rather than streamed token-by-token — see Open item 4).
-- Fall back to a single non-streamed response only on paths that can't stream.
+- **Streaming когато е възможно.** Stream-ва разговорния текст на асистента към dock-а през SSE
+  (`streamText`); BgGPT поддържа OpenAI-style streaming.
+- Tool call-овете (SQL, уеб търсене) се изпълняват server-side по средата на stream-а; **картата на
+  справката се рендира, когато финалният артефакт на справката е готов** (block-спецификацията на
+  справката се финализира чрез tool/structured стъпка, а не се stream-ва token по token — виж
+  Отворена точка 4).
+- Връща се към единичен non-streamed отговор само по пътищата, които не могат да stream-ват.
 
-### Loop depth & quota config
+### Дълбочина на loop-а и quota конфигурация
 
-- Cap tool iterations per turn via the SDK's `maxSteps` (configurable; default ~6) to bound
-  latency and quota use.
-- **Quota is a config var** — e.g. `BGGPT_RATE_LIMIT_RPM` (default 120), raised without a code
-  change if the plan grows. `maxSteps` is likewise configurable.
-- Config vars live in the Worker `[vars]`; `BGGPT_API_KEY` stays a **secret** (`.dev.vars`
-  locally, `wrangler secret` in prod).
+- Ограничаваме итерациите на инструментите на ход чрез `maxSteps` на SDK-то (конфигурируемо;
+  по подразбиране ~6), за да ограничим latency и quota разход.
+- **Quota е config променлива** — напр. `BGGPT_RATE_LIMIT_RPM` (по подразбиране 120), повишава се
+  без промяна на кода, ако планът порасне. `maxSteps` също е конфигурируемо.
+- Config променливите живеят в `[vars]` на Worker-а; `BGGPT_API_KEY` остава **секрет** (`.dev.vars`
+  локално, `wrangler secret` в production).
 
-## 3. Tools — *Decided 2026-06-07*
+## 3. Инструменти — *Решено 2026-06-07*
 
-The agent's capability surface: read-only data access, provenance, and live EOP pulls. Web search
-is **deferred** (see below).
+Повърхността от способности на агента: read-only достъп до данните, проследимост на произхода и
+живи EOP заявки. Уеб търсенето е **отложено** (виж по-долу).
 
-### Data & query tools
+### Инструменти за данни и заявки
 
-- **`run_sql`** — read-only `SELECT` over D1; the "any select query" capability you asked for.
-  Reaches both the normalized domain tables and the raw source mirrors (`raw_contracts`,
-  `raw_tenders`, `raw_amendments`, `raw_ocds_*`, `raw_tr_companies`). Safety is designed in full under #7; the shape: single
-  statement, must be `SELECT`/`WITH…SELECT`, keyword blocklist (`INSERT/UPDATE/DELETE/DROP/
-  ATTACH/PRAGMA/…`), no extra semicolons, a hard `LIMIT`, a row/byte cap on what's returned to the
-  model, and a query timeout.
-- **`describe_schema`** — the curated data dictionary the model reads before writing SQL: tables,
-  columns, key enum values (`status`, `procedure_type`, CPV sectors…), plus each row's `source`
-  provenance tag and the `data_freshness` view. Grounded from
+- **`run_sql`** — read-only `SELECT` върху D1; способността „каква да е select заявка". Достига
+  както нормализираните domain таблици, така и raw огледалата на източниците (`raw_contracts`,
+  `raw_tenders`, `raw_amendments`, `raw_ocds_*`, `raw_tr_companies`). Безопасността е проектирана
+  пълно в #7; формата: единичен statement, задължително `SELECT`/`WITH…SELECT`, blocklist от
+  ключови думи (`INSERT/UPDATE/DELETE/DROP/ATTACH/PRAGMA/…`), без допълнителни точка-запетаи, твърд
+  `LIMIT`, лимит на редове/байтове за това, което се връща към модела, и timeout на заявката.
+- **`describe_schema`** — курираният речник на данните, който моделът чете преди да пише SQL:
+  таблици, колони, ключови enum стойности (`status`, `procedure_type`, CPV сектори…), плюс
+  `source` тага за произход на всеки ред и view-то `data_freshness`. Заземен от
   [migrations/0000_init.sql](../../packages/db/migrations/0000_init.sql) +
-  [schema.ts](../../packages/db/src/schema.ts). *(data-sources reading (a): provenance-aware)*
-- **Curated query tools** — reliable, fast paths for the common cases with `run_sql` as the escape
-  hatch (**hybrid**): `search_entities` (FTS over `search_index`),
-  `get_company`/`get_authority`/`get_contract`, `explain_risk` (→ `risk_scores` +
-  `@sigma/analysis`). Precedent: [assistant-tools](../../packages/assistant-tools/src/index.ts).
-  Rationale: raw SQL is the power tool, but a 27B model writing free SQL is error-prone — curated
-  tools cover the common 80% reliably; `run_sql` handles the bespoke 20%.
+  [schema.ts](../../packages/db/src/schema.ts). *(четене на data-sources (a): provenance-aware)*
+- **Курирани query инструменти** — надеждни, бързи пътища за честите случаи, с `run_sql` като
+  escape hatch (**хибрид**): `search_entities` (FTS върху `search_index`),
+  `get_company`/`get_authority`/`get_contract`, `explain_risk` (→ `risk_scores`; аналитичният
+  слой, който го захранва, е roadmap — виж по-долу). Обосновка: raw SQL е силният
+  инструмент, но 27B модел, който пише свободен SQL, е склонен към грешки — курираните инструменти
+  покриват честите 80% надеждно; `run_sql` поема индивидуалните 20%.
 
-### Source tools
+### Инструменти за източници
 
-- **`eop_fetch`** — live pull of a day's EOP open-data bucket from `EOP_OPEN_DATA_BASE_URL`
-  (default `storage.eop.bg`): `{base}/open-data-{YYYY}-{MM}-{DD}/` → 3 JSON arrays
-  (поръчки/договори/анекси, camelCase, joined on `uniqueProcurementNumber`; a missing day = 403).
-  For **recency / native detail** beyond the last ingest, by date or known UNP. It is **per-day,
-  not a cross-day search index**, so D1 stays the primary search path. See
-  [etl-eop-feed.md](../etl-eop-feed.md). *(reading (c): live fetch)*
-- **`source_link`** — deterministic official deep-links (АОП / ЦАИС ЕОП / Търговски регистър) so
-  every report can cite and link back to the source registry. *(reading (b): deep-link out)*
+- **`eop_fetch`** — жива заявка на дневен EOP open-data bucket от `EOP_OPEN_DATA_BASE_URL`
+  (по подразбиране `storage.eop.bg`): `{base}/open-data-{YYYY}-{MM}-{DD}/` → 3 JSON масива
+  (поръчки/договори/анекси, camelCase, join-нати по `uniqueProcurementNumber`; липсващ ден = 403).
+  За **актуалност / естествен детайл** отвъд последния ingest, по дата или известен УНП. Той е
+  **per-day, не cross-day търсещ индекс**, така че D1 остава основният път за търсене. Виж
+  [etl.md](../etl.md). *(четене (c): жива заявка)*
+- **`source_link`** — детерминистични официални дълбоки линкове (АОП / ЦАИС ЕОП / Търговски
+  регистър), така че всяка справка да може да цитира и линква обратно към изходния регистър.
+  *(четене (b): дълбок линк навън)*
 
-### Web search — deferred
+### Уеб търсене — отложено
 
-Out of scope for now. Future intent: a **keyless** implementation via `lite.duckduckgo.com/lite`
-(result list) + page fetch — no API key. Prompt-injection from fetched web content is why it's
-gated behind the #7 security work when it lands.
+Извън обхвата засега. Бъдещо намерение: **keyless** имплементация през `lite.duckduckgo.com/lite`
+(списък резултати) + page fetch — без API ключ. Prompt-injection от свалено уеб съдържание е
+причината то да е gate-нато зад security работата в #7, когато се появи.
 
-## 4. Report model — *Decided 2026-06-07*
+## 4. Модел на справките — *Решено 2026-06-07*
 
-**Core principle: the agent emits semantic data + intent; the renderer owns all presentation.**
-The agent never produces colours, SVG geometry, React, or formatted numbers — it emits labels, raw
-values, and column definitions with *format hints*, and the renderer maps those onto the site
-components and design tokens. This keeps reports native, prevents design drift, and lets the R2
-snapshot render identically forever.
+**Основен принцип: агентът емитира семантични данни + намерение; renderer-ът владее цялото
+представяне.** Агентът никога не произвежда цветове, SVG геометрия, React или форматирани числа —
+той емитира етикети, сурови стойности и дефиниции на колони с *format hint-ове*, а renderer-ът ги
+мапва върху компонентите на сайта и design token-ите. Това запазва справките естествени,
+предотвратява design drift и позволява R2 snapshot-ът да се рендира идентично завинаги.
 
-### Mechanics
+### Механика
 
-- **Closed block vocabulary** emitted via a validated **`emit_report`** structured step
-  (Zod / JSON-schema; invalid output → the model retries). This is the "report finalized via a
-  tool step" from #2 — not streamed token-by-token.
-- **Formatting by hint, not by value** — columns/totals carry
-  `format: 'money' | 'number' | 'percent' | 'date' | 'text'`; the renderer applies the site's
-  `money` / `pct` / `count` helpers from `@sigma/shared` (money in лева, etc.).
-- **Links by entity-ref, not URL** — a row/node gives `{kind:'company', id}`; the renderer builds
-  the canonical `/companies/:eik` (or `/authorities/:eik`, `/contracts/:id`) href.
-- **Data snapshot is embedded** in the block-spec — the rows/edges/values the agent gathered are
-  stored in the R2 artifact, so `/reports/:id` never re-queries (ties to the R2 decision below).
+- **Затворен block речник**, емитиран през валидирана **`emit_report`** structured стъпка
+  (Zod / JSON-schema; невалиден output → моделът прави повторен опит). Това е „справката,
+  финализирана чрез tool стъпка" от #2 — не се stream-ва token по token.
+- **Форматиране по hint, не по стойност** — колоните/тоталите носят
+  `format: 'money' | 'number' | 'percent' | 'date' | 'text'`; renderer-ът прилага helper-ите
+  `money` / `pct` / `count` на сайта от `@sigma/shared` (пари в лева и т.н.).
+- **Линкове по entity-ref, не по URL** — ред/възел дава `{kind:'company', id}`; renderer-ът
+  изгражда каноничния `/companies/:eik` (или `/authorities/:eik`, `/contracts/:id`) href.
+- **Snapshot на данните е вграден** в block-спецификацията — редовете/ребрата/стойностите, които
+  агентът е събрал, се съхраняват в R2 артефакта, така че `/reports/:id` никога не прави повторна
+  заявка (връзва се с R2 решението по-долу).
 
-### Block vocabulary (v1)
+### Block речник (v1)
 
-| Block | Component | Agent supplies |
+| Block | Компонент | Какво подава агентът |
 |---|---|---|
-| `text` | prose / `PageHeader` lede | markdown string (the written answer) |
+| `text` | проза / `PageHeader` lede | markdown стринг (написаният отговор) |
 | `totals` | [TotalsStrip](../../apps/web/app/components/TotalsStrip.tsx) | `[{label, value, format}]` |
 | `facts` | [FactsList](../../apps/web/app/components/FactsList.tsx) | `[{term, value, sub?}]` |
-| `table` | [DataTable](../../apps/web/app/components/DataTable.tsx) | declarative `columns` (key, header, align, format, link?) + plain `rows` |
-| `bar` | [StackedBar](../../apps/web/app/components/StackedBar.tsx) | `[{label, value, key?}]` — renderer computes shares **and** palette colours |
-| `flows` | [SankeyDiagram](../../apps/web/app/components/SankeyDiagram.tsx) | `[{from, to, valueEur}]` edges — renderer computes the SVG layout |
-| `timeseries` | **NEW** — hand-rolled CSS/SVG, no chart lib | `[{period, value}]` (+ optional multi-series) |
-| `callout` | `Callout` | title + body (caveats, freshness, source note) |
+| `table` | [DataTable](../../apps/web/app/components/DataTable.tsx) | декларативни `columns` (key, header, align, format, link?) + plain `rows` |
+| `bar` | [StackedBar](../../apps/web/app/components/StackedBar.tsx) | `[{label, value, key?}]` — renderer-ът изчислява дяловете **и** цветовете на палитрата |
+| `flows` | [SankeyDiagram](../../apps/web/app/components/SankeyDiagram.tsx) | `[{from, to, valueEur}]` ребра — renderer-ът изчислява SVG layout-а |
+| `timeseries` | **НОВ** — ръчно изработен CSS/SVG, без chart библиотека | `[{period, value}]` (+ опционални multi-series) |
+| `callout` | `Callout` | заглавие + тяло (уговорки, свежест, бележка за източник) |
 
-- **`timeseries` is the one new component.** Procurement questions are heavily trend-over-time
-  (2020→2026) and no existing graphic covers it. Built hand-rolled in CSS/SVG to match how
-  StackedBar/Sankey are built — the house style is **no chart library**.
-- **No map.** A NUTS/municipality choropleth needs a Bulgaria topology asset — out of scope.
-- **Server-computed presentation** for `bar` (colours) and `flows` (geometry): the agent supplies
-  meaning, the server supplies pixels, reusing the flows loader's layout computation (extracted if
-  currently inline).
+- **`timeseries` е единственият нов компонент.** Въпросите за обществените поръчки са силно
+  тренд-във-времето (2020→2026) и нито една съществуваща графика не го покрива. Изграден ръчно в
+  CSS/SVG, за да съответства на начина, по който са изградени StackedBar/Sankey — стилът на къщата
+  е **без chart библиотека**.
+- **Без карта.** NUTS/общинска хороплет карта изисква топологичен asset на България — извън
+  обхвата.
+- **Server-computed представяне** за `bar` (цветове) и `flows` (геометрия): агентът подава смисъл,
+  сървърът подава пиксели, преизползвайки layout изчислението на flows loader-а (извлечено, ако
+  в момента е inline).
 
-### Editorial shape
+### Редакторска форма
 
-The system prompt enforces a consistent report skeleton so every report reads like a native page:
-title → one-line answer (`text`) → headline `totals` → supporting `table` / `bar` / `flows` /
-`timeseries` → a `callout` citing sources & data freshness. The compact chat card (#1) is a
-projection of this same spec (title + first block + „Отвори") — no separate authoring.
+Системният prompt налага консистентен скелет на справката, така че всяка справка да изглежда като
+естествена страница: заглавие → едноредов отговор (`text`) → водещи `totals` → поддържащи
+`table` / `bar` / `flows` / `timeseries` → `callout`, цитиращ източници и свежест на данните.
+Компактната chat карта (#1) е проекция на същата спецификация (заглавие + първи блок + „Отвори") —
+без отделно авторство.
 
-## 5. Persistence & history — *Decided 2026-06-07*
+## 5. Персистенция и история — *Решено 2026-06-07*
 
-**No user accounts (a permanent non-goal); everything is public.** The only durable server-side
-artifacts are the reports (in R2); conversations live in the browser.
+**Без потребителски акаунти (постоянна non-goal); всичко е публично.** Единствените трайни
+server-side артефакти са справките (в R2); разговорите живеят в браузъра.
 
-### Reports — immutable R2 artifacts
+### Справки — неизменни R2 артефакти
 
-Decouples expensive generation from cheap viewing.
+Разделя скъпото генериране от евтиното гледане.
 
-- **Generation (expensive, once).** The agent's output — the report block-spec plus metadata
-  (title, the question asked, the tool/SQL calls that produced it, a snapshot of the result data,
-  timestamp) — is written as a single immutable JSON object to R2 under a **random unguessable
-  id**.
-- **Viewing (cheap, repeatable).** `/reports/:id` reads that static object from R2 and renders it
-  server-side. Immutable ⇒ `Cache-Control: immutable` ⇒ served from the CDN edge. A viral
-  `/reports/:id` link **never re-runs the agent and never touches D1**.
-- **Public, unlisted-by-link.** Anyone with the link can view (the underlying data is open); no
-  auth to view, no gating. The unguessable id is the only — and a soft — privacy boundary.
-- D1 stays for *data* queries only — no report-row bloat. R2 lifecycle rules expire stale reports
-  to bound storage (a stale chip may eventually 404 — acceptable).
+- **Генериране (скъпо, веднъж).** Output-ът на агента — block-спецификацията на справката плюс
+  metadata (заглавие, зададеният въпрос, tool/SQL заявките, които са я произвели, snapshot на
+  резултатните данни, timestamp) — се записва като един неизменен JSON обект в R2 под **случаен,
+  непогадаем id**.
+- **Гледане (евтино, повторяемо).** `/reports/:id` чете този статичен обект от R2 и го рендира
+  server-side. Неизменен ⇒ `Cache-Control: immutable` ⇒ сервира се от CDN edge. Вирусен
+  `/reports/:id` линк **никога не пуска агента отново и никога не докосва D1**.
+- **Публично, unlisted-by-link.** Всеки с линка може да гледа (базовите данни са отворени); без
+  auth за гледане, без gating. Непогадаемият id е единствената — и мека — privacy граница.
+- D1 остава само за *data* заявки — без bloat от редове за справки. R2 lifecycle правила изтриват
+  остарели справки, за да ограничат съхранението (остарял chip може евентуално да върне 404 —
+  приемливо).
 
-### Conversation state — client-side, stateless server
+### Състояние на разговора — client-side, stateless сървър
 
-- The transcript (messages + report-chip refs: `id` + title) lives in the browser
-  (localStorage / IndexedDB). **No server-side session store, no accounts.**
-- The **server is stateless**: each turn the client posts the recent history + the new message,
-  the agent loop runs and returns, and nothing per-user is persisted. The most DoS-resistant shape
-  — no session state to exhaust.
-- Gemma-3-27b's large context handles a normal chat; window/trim if a conversation grows huge.
-- Trade-off of no accounts: no cross-device sync, and clearing storage loses chat history (saved
-  `/reports/:id` links survive). This is permanent — **accounts are a non-goal**, not planned at
-  any point.
+- Транскриптът (съобщения + report-chip референции: `id` + заглавие) живее в браузъра
+  (localStorage / IndexedDB). **Без server-side session store, без акаунти.**
+- **Сървърът е stateless**: на всеки ход клиентът post-ва скорошната история + новото съобщение,
+  agent loop-ът се изпълнява и връща, и нищо per-user не се персистира. Най-DoS-устойчивата форма —
+  няма session състояние, което да се изчерпи.
+- Големият контекст на Gemma-3-27b се справя с нормален чат; прозорец/trim, ако разговорът стане
+  огромен.
+- Компромис на липсата на акаунти: без cross-device sync, и изчистването на storage губи историята
+  на чата (запазените `/reports/:id` линкове оцеляват). Това е постоянно — **акаунтите са non-goal**,
+  не са планирани в нито един момент.
 
-### "My reports" & sharing
+### „Моите справки" и споделяне
 
-- A `/reports` page (or a panel in the dock) lists the report ids **this browser** generated, each
-  linking to `/reports/:id` — built from the local index, with **no global enumeration** of all
-  reports.
-- Sharing = copy the `/reports/:id` link. Public, no login on either end.
+- Страница `/reports` (или панел в dock-а) изброява id-тата на справките, които **този браузър** е
+  генерирал, всяко линкващо към `/reports/:id` — изградено от локалния индекс, **без глобално
+  изброяване** на всички справки.
+- Споделяне = копиране на `/reports/:id` линка. Публично, без login от никоя страна.
 
-## 6. Voice input — *Decided 2026-06-07*
+## 6. Гласов вход — *Решено 2026-06-07*
 
-Voice is purely an input method that produces text; everything downstream is the normal text flow.
+Гласът е чисто метод за вход, който произвежда текст; всичко надолу е нормалният текстов поток.
 
-- **Capture** — `MediaRecorder` from the dock's mic button, in the browser's native container
-  (Chrome/Firefox → webm/opus, Safari/iOS → mp4/m4a). All are Whisper-accepted, so **no
-  transcoding**.
-- **Transcribe via the Worker** — the blob POSTs to a resource route (e.g. `/assistant/transcribe`);
-  the Worker proxies to BgGPT `POST /v1/audio/transcriptions` with `model=bggpt-whisper-large-v3`,
-  `language=bg`, `response_format=json`. The browser **never sees `BGGPT_API_KEY`** — it stays a
-  server secret.
-- **Transcript → input, editable** — the returned text lands in the chat input; the user reviews/
-  edits and hits send (**not auto-send**), so a mishear is fixed before the agent runs and we don't
-  burn agent quota on a bad transcript.
-- **Bounds** — client-side max recording length **~60 s** (well under the 25 MB cap, bounds cost);
-  **audio is transient** — never stored, only the resulting text (which lives client-side like any
-  message).
-- **Abuse** — the transcribe endpoint sits behind the same #7 protection; Whisper's 360 req/min
-  limit is generous, not the constraint.
-- **Fallback** — mic-permission denial or a transcription error degrades gracefully to text input.
+- **Запис** — `MediaRecorder` от mic бутона на dock-а, в нативния контейнер на браузъра
+  (Chrome/Firefox → webm/opus, Safari/iOS → mp4/m4a). Всички са приети от Whisper, така че **без
+  транскодиране**.
+- **Транскрипция през Worker-а** — blob-ът се POST-ва към resource route (напр.
+  `/assistant/transcribe`); Worker-ът прокси-ва към BgGPT `POST /v1/audio/transcriptions` с
+  `model=bggpt-whisper-large-v3`, `language=bg`, `response_format=json`. Браузърът **никога не вижда
+  `BGGPT_API_KEY`** — той остава server секрет.
+- **Транскрипт → вход, редактируем** — върнатият текст каца в chat input-а; потребителят
+  преглежда/редактира и натиска изпрати (**не auto-send**), така че погрешно чуване се поправя
+  преди агентът да тръгне и не изгаряме quota на агента за лош транскрипт.
+- **Граници** — client-side максимална дължина на записа **~60 сек** (доста под лимита от 25 MB,
+  ограничава разхода); **аудиото е преходно** — никога не се съхранява, само резултатният текст
+  (който живее client-side като всяко съобщение).
+- **Злоупотреба** — transcribe endpoint-ът седи зад същата защита от #7; лимитът на Whisper от 360
+  заявки/мин е щедър, не е ограничението.
+- **Fallback** — отказ на mic разрешение или грешка при транскрипция деградира плавно към текстов
+  вход.
 
-## 7. Security & guardrails — *Decided 2026-06-07*
+## 7. Сигурност и guardrails — *Решено 2026-06-07*
 
-Auth is settled (public, no accounts — see #5). Three concerns remain: locking down `run_sql`,
-containing prompt injection, and protecting the quota.
+Auth е уреден (публично, без акаунти — виж #5). Остават три притеснения: заключване на `run_sql`,
+ограничаване на prompt injection и защита на quota.
 
-### Read-only SQL — defense in depth
+### Read-only SQL — защита в дълбочина
 
-- **AST-validated, not regex.** Parse the model's SQL with a SQLite-dialect parser (e.g.
-  `node-sql-parser`) and assert the AST is a **single read-only `SELECT`** (`WITH…SELECT` CTEs
-  allowed); reject anything else outright. A keyword blocklist
-  (`INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/ATTACH/PRAGMA/…`) stays as a cheap second layer, but the
-  parser is the real guard — blocklists are bypassable via comments/casing/stacked statements.
-- **Injected `LIMIT`** — add one if absent, cap it if too high.
-- **Result byte cap** — truncate what's returned to the model (with a "results truncated" note) so a
-  large result can't blow context or cost.
-- **Timeout** — bound query time; pathological cross-joins die rather than hang.
-- The data is public, so SQL is a **write / DoS** risk, not a confidentiality one — the guards
-  target side-effects and resource burn.
+- **AST-валидиран, не regex.** Parse-ва се SQL-ът на модела със SQLite-dialect parser (напр.
+  `node-sql-parser`) и се твърди, че AST-ът е **единичен read-only `SELECT`** (`WITH…SELECT` CTE-та
+  разрешени); всичко друго се отхвърля направо. Blocklist от ключови думи
+  (`INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/ATTACH/PRAGMA/…`) остава като евтин втори слой, но
+  parser-ът е истинският guard — blocklist-ите се заобикалят през коментари/casing/stacked
+  statement-и.
+- **Инжектиран `LIMIT`** — добавя се, ако липсва; ограничава се, ако е твърде висок.
+- **Лимит на байтовете на резултата** — отрязва се това, което се връща към модела (с бележка
+  „резултатите са отрязани"), така че голям резултат да не може да взриви контекста или цената.
+- **Timeout** — ограничава времето на заявката; патологични cross-join-и умират, вместо да висят.
+- Данните са публични, така че SQL е **write / DoS** риск, не риск за поверителност — guard-овете
+  се целят в side-effects и изгаряне на ресурси.
 
-### Prompt injection — least privilege is the primary defense
+### Prompt injection — least privilege е основната защита
 
-- The entire toolset is **read-only and bounded** (`run_sql` SELECT, public `eop_fetch`,
-  `source_link`, `emit_report`). A successful injection from DB content (a supplier literally named
-  „Ignore previous instructions…") — or web content when it lands — **cannot escalate**: there is no
-  write, secret, or destructive tool to hijack. Worst case is a pointless query or an odd report.
-- **Prompt hardening** — the system prompt instructs the model to treat all tool/data content as
-  data, never as instructions.
-- **Output sanitization (critical).** Reports are **public, shareable URLs**, so a stored-XSS in a
-  report would reach anyone. The renderer **never executes model-provided HTML/JS**: blocks are data
-  rendered by trusted components, and `text`/`callout` markdown is **sanitized (no raw HTML)**. This
-  closes the stored-XSS vector on `/reports/:id`.
+- Целият набор от инструменти е **read-only и ограничен** (`run_sql` SELECT, публичен `eop_fetch`,
+  `source_link`, `emit_report`). Успешна инжекция от съдържание в базата (доставчик, буквално
+  наименован „Игнорирай предишните инструкции…") — или от уеб съдържание, когато се появи —
+  **не може да ескалира**: няма write, secret или деструктивен инструмент, който да се отвлече.
+  Най-лошият случай е безсмислена заявка или странна справка.
+- **Хардване на prompt-а** — системният prompt инструктира модела да третира цялото tool/data
+  съдържание като данни, никога като инструкции.
+- **Санитизация на output-а (критично).** Справките са **публични, споделими URL-и**, така че
+  stored-XSS в справка би достигнал всеки. Renderer-ът **никога не изпълнява предоставен от модела
+  HTML/JS**: блоковете са данни, рендирани от доверени компоненти, а `text`/`callout` markdown-ът е
+  **санитизиран (без raw HTML)**. Това затваря stored-XSS вектора на `/reports/:id`.
 
-### Rate-limiting & circuit-breaker
+### Rate-limiting и circuit-breaker
 
-- **The view path is LLM-free** (cached R2 artifacts), so shared/viral `/reports/:id` links cannot
-  eat the quota — only generation needs protecting.
-- **Turnstile** — Cloudflare's keyless, invisible CAPTCHA gates the chat endpoint, stopping
-  automated abuse before it reaches the model.
-- **Per-client limit** — Cloudflare's native **Rate Limiting binding** keyed on IP (keyless) on the
-  chat + transcribe endpoints.
-- **Global circuit-breaker** — a rolling-minute counter (Durable Object or KV) of BgGPT calls; as it
-  nears `BGGPT_RATE_LIMIT_RPM` (default 120), shed/queue with „опитайте пак след малко" so we never
-  blow the shared upstream quota.
-- **Concurrency cap** + the **`maxSteps`** cap (#2) bound per-turn cost. All thresholds are config
-  `[vars]`.
+- **Пътят на гледане е LLM-free** (кеширани R2 артефакти), така че споделени/вирусни `/reports/:id`
+  линкове не могат да изядат quota — само генерирането се нуждае от защита.
+- **Turnstile** — keyless, невидимата CAPTCHA на Cloudflare gate-ва chat endpoint-а, спирайки
+  автоматизирана злоупотреба, преди да достигне модела.
+- **Per-client лимит** — нативният **Rate Limiting binding** на Cloudflare, keyed по IP (keyless)
+  на chat + transcribe endpoint-ите.
+- **Глобален circuit-breaker** — rolling-minute брояч (Durable Object или KV) на BgGPT
+  извикванията; когато наближи `BGGPT_RATE_LIMIT_RPM` (по подразбиране 120), shed/queue с „опитайте
+  пак след малко", за да не взривим споделената upstream quota.
+- **Concurrency cap** + лимитът **`maxSteps`** (#2) ограничават разхода на ход. Всички прагове са
+  config `[vars]`.
 
 ---
 
-## 8. v1 scope & phasing — *Decided 2026-06-07*
+## 8. v1 обхват и фазиране — *Решено 2026-06-07*
 
-Guards travel with the tools they protect; abuse protection is a hard gate on public exposure, not
-a separate late phase. **v1 = Phases 1–3 + the launch gate** — reports, voice, and `eop_fetch` are
-all in v1.
+Guard-овете пътуват с инструментите, които защитават; защитата от злоупотреба е твърд gate върху
+публичното излагане, не отделна късна фаза. **v1 = Фази 1–3 + launch gate** — справки, глас и
+`eop_fetch` са всичките в v1.
 
-### Phase 1 — Foundation & data chat (text only)
+### Фаза 1 — Фундамент и chat с данните (само текст)
 
-- Add the R2 binding + config `[vars]` to `apps/web`; retire the stub `apps/assistant` / `apps/api`.
-- BgGPT via the Vercel AI SDK; streaming `/assistant/chat`; the global dock shell (collapsible,
-  empty state with example prompts).
-- `describe_schema`, `run_sql` **with the full #7 SQL guards**, the curated tools, `maxSteps`.
-- *Outcome:* a working "chat with the data" assistant answering in prose.
+- Добавяне на R2 binding + config `[vars]` към `apps/web`.
+- BgGPT през Vercel AI SDK; streaming `/assistant/chat`; обвивката на глобалния dock (свиваем,
+  empty state с примерни prompt-и).
+- `describe_schema`, `run_sql` **с пълните SQL guard-ове от #7**, курираните инструменти,
+  `maxSteps`.
+- *Резултат:* работещ „чат с данните" асистент, отговарящ в проза.
 
-### Phase 2 — Reports (the headline)
+### Фаза 2 — Справки (заглавната функционалност)
 
-- `emit_report` + the block-spec schema + the renderer (existing components + the new `timeseries`).
-- R2 persistence, `/reports/:id`, compact cards in chat, the re-open mechanic, the `/reports` index.
-- *Outcome:* rich, shareable reports.
+- `emit_report` + block-спецификационната схема + renderer-ът (съществуващите компоненти + новият
+  `timeseries`).
+- R2 персистенция, `/reports/:id`, компактни карти в чата, механиката на повторно отваряне,
+  индексът `/reports`.
+- *Резултат:* богати, споделими справки.
 
-### Phase 3 — Voice & live sources
+### Фаза 3 — Глас и живи източници
 
-- Voice input (`/assistant/transcribe`).
+- Гласов вход (`/assistant/transcribe`).
 - `eop_fetch` + `source_link`.
 
-### Launch gate (before any public exposure)
+### Launch gate (преди каквото и да е публично излагане)
 
-- Turnstile + the Rate Limiting binding + the global circuit-breaker. Staging may run without;
-  public launch may not.
+- Turnstile + Rate Limiting binding + глобалният circuit-breaker. Staging може да върви без тях;
+  публичното пускане не може.
 
-### Deferred (post-v1)
+### Отложено (post-v1)
 
-- **Web search** (keyless `lite.duckduckgo.com/lite`) — see #3.
-- **Map / NUTS choropleth block** — see #4.
+- **Уеб търсене** (keyless `lite.duckduckgo.com/lite`) — виж #3.
+- **Карта / NUTS хороплет block** — виж #4.
 
 ### Non-goals
 
-- **User accounts / cross-device sync** — not planned at any point (see #5).
+- **Потребителски акаунти / cross-device sync** — не са планирани в нито един момент (виж #5).

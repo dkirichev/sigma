@@ -1,5 +1,5 @@
 {
-  "name": "sigma-prototype",
+  "name": "sigma",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -15,7 +15,7 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "remoteUser": "node",
-  "workspaceFolder": "/workspaces/sigma-prototype",
+  "workspaceFolder": "/workspaces/sigma",
   "forwardPorts": [5173, 8789],
   "portsAttributes": {
     "5173": { "label": "web (React Router dev)" },
@@ -23,8 +23,8 @@
   },
   "otherPortsAttributes": { "onAutoForward": "notify" },
   "mounts": [
-    "source=sigma-prototype-node-modules,target=/workspaces/sigma-prototype/node_modules,type=volume",
-    "source=sigma-prototype-pnpm-store,target=/home/node/.pnpm-store,type=volume",
+    "source=sigma-node-modules,target=/workspaces/sigma/node_modules,type=volume",
+    "source=sigma-pnpm-store,target=/home/node/.pnpm-store,type=volume",
     "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind"
   ],
   "remoteEnv": {

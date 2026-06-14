@@ -9,7 +9,7 @@ For project background, architecture, and scope, read the design docs in [docs/]
 Single repo, trunk-based:
 
 ```
-todorkolev/sigma-prototype   ← origin; `main` is the only long-lived branch
+midt-bg/sigma   ← origin; `main` is the only long-lived branch
 ```
 
 No fork, no `develop`, no `staging`. Work happens on short-lived feature branches off `main` and merges back via PR.
@@ -29,14 +29,14 @@ No fork, no `develop`, no `staging`. Work happens on short-lived feature branche
 
 ## Pull requests
 
-- Feature branch → PR into `main` on `todorkolev/sigma-prototype` → review → merge → delete the branch.
+- Feature branch → PR into `main` on `midt-bg/sigma` → review → merge → delete the branch.
 - Push the branch *before* opening the PR. Keep each PR scoped to one logical change so it stays reviewable.
 - Use the `gh` CLI for PR operations. Only push or open a PR when asked.
 
 ## Working directory and environment
 
-- The runtime cwd is the project root — `/workspaces/sigma-prototype` inside the devcontainer.
-- Sigma reuses the kolkostruva tech stack (pnpm + turbo monorepo on Cloudflare: React Router v7 (SSR) on Workers, D1, Durable Objects, Vectorize, Workers AI, Queues, KV, R2, AI Gateway). Use the existing `pnpm`, `wrangler`, and `turbo` scripts — see [README.md](README.md).
+- The runtime cwd is the project root — `/workspaces/sigma` inside the devcontainer.
+- Sigma reuses an existing pnpm + turbo monorepo tech stack on Cloudflare (React Router v7 (SSR) on Workers, D1, Durable Objects, Vectorize, Workers AI, Queues, KV, R2, AI Gateway). Use the existing `pnpm`, `wrangler`, and `turbo` scripts — see [README.md](README.md).
 - The monorepo scaffold (`apps/`, `packages/`, workspace + lockfile) is still being established. If a script doesn't exist yet, say so rather than inventing one.
 - Run only the minimal tests needed to gain confidence in the change. Full release verification is reserved for explicit asks (release tickets, smoke tests).
 

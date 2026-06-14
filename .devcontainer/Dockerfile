@@ -50,7 +50,7 @@ RUN corepack enable \
        > /etc/profile.d/pnpm-home.sh
 
 USER node
-WORKDIR /workspaces/sigma-prototype
+WORKDIR /workspaces/sigma
 
 ENV PNPM_HOME=/home/node/.local/share/pnpm
 ENV PATH=/home/node/.local/bin:${PNPM_HOME}:${PATH}
