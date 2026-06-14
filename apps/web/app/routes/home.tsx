@@ -146,7 +146,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       <section className="section" aria-labelledby="find-yours">
         <h2 id="find-yours">
-          Намери своята <em>институция</em>
+          Най-активните <em>институции</em>
         </h2>
         <p className="section-hint">
           Започни оттук, ако те интересува конкретно министерство, община, агенция или болница.
