@@ -15,7 +15,6 @@ const TABLES = [
   'tenders',
   'lots',
   'contracts',
-  'risk_scores',
   'amendments',
   'parties',
   'fx_rates',

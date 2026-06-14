@@ -30,8 +30,7 @@
 --     11k+ УНП appear only in contracts (no tenders row) → a synthetic 'неизвестна' tender so
 --     every contract has a parent. bids stays empty (the data has a bid COUNT, not bids).
 
--- Full clear in child→parent order (D1 enforces FKs). risk_scores is a dependent and is stale after
--- a domain reload; it is recomputed by apps/etl after this runs.
+-- Full clear in child→parent order (D1 enforces FKs).
 DELETE FROM search_index;
 DELETE FROM flow_pairs;
 DELETE FROM company_totals;
@@ -40,7 +39,6 @@ DELETE FROM sector_totals;
 DELETE FROM facet_counts;
 DELETE FROM home_totals;
 DELETE FROM contracts;
-DELETE FROM risk_scores;
 DELETE FROM lots;
 DELETE FROM tenders;
 DELETE FROM bidders;

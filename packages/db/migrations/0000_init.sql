@@ -151,15 +151,6 @@ CREATE TABLE contracts (
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Parked (signals layer): composite risk per tender. Recomputed by apps/etl; empty in the core.
-CREATE TABLE risk_scores (
-  tender_id   TEXT PRIMARY KEY REFERENCES tenders(id),
-  score       REAL NOT NULL,
-  band        TEXT NOT NULL,
-  signals     TEXT NOT NULL DEFAULT '{}',  -- JSON signal breakdown
-  computed_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 -- Domain amendment history used to roll current_value/annex_count without staging. Natural-keyed so
 -- re-imports are idempotent; built by scripts/promote-amendments.sql from the transient amendment feed.
 CREATE TABLE amendments (
@@ -365,4 +356,3 @@ CREATE INDEX idx_authority_totals_type ON authority_totals(type_group);
 CREATE INDEX idx_authority_totals_name ON authority_totals(name);
 CREATE INDEX idx_flow_pairs_won ON flow_pairs(won_eur DESC);
 CREATE INDEX idx_flow_pairs_authority ON flow_pairs(authority_id);
-CREATE INDEX idx_risk_band ON risk_scores(band);

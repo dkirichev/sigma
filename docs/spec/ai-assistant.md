@@ -125,12 +125,10 @@
 - **`describe_schema`** — курираният речник на данните, който моделът чете преди да пише SQL:
   таблици, колони, ключови enum стойности (`status`, `procedure_type`, CPV сектори…), плюс
   `source` тага за произход на всеки ред и view-то `data_freshness`. Заземен от
-  [migrations/0000_init.sql](../../packages/db/migrations/0000_init.sql) +
-  [schema.ts](../../packages/db/src/schema.ts). *(четене на data-sources (a): provenance-aware)*
+  [migrations/0000_init.sql](../../packages/db/migrations/0000_init.sql). *(четене на data-sources (a): provenance-aware)*
 - **Курирани query инструменти** — надеждни, бързи пътища за честите случаи, с `run_sql` като
   escape hatch (**хибрид**): `search_entities` (FTS върху `search_index`),
-  `get_company`/`get_authority`/`get_contract`, `explain_risk` (→ `risk_scores`; аналитичният
-  слой, който го захранва, е roadmap — виж по-долу). Обосновка: raw SQL е силният
+  `get_company`/`get_authority`/`get_contract`. Обосновка: raw SQL е силният
   инструмент, но 27B модел, който пише свободен SQL, е склонен към грешки — курираните инструменти
   покриват честите 80% надеждно; `run_sql` поема индивидуалните 20%.
 
