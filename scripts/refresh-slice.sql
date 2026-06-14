@@ -566,10 +566,10 @@ SELECT
   x.strategic
 FROM (
   SELECT q.*,
-    -- Only value_suspect nulls amount_eur. value_low (and 'review') is populated here, so it counts
-    -- in every sum; it is merely labelled in the UI. annex_suspect uses trusted_native's signing fallback.
+    -- value_suspect is repaired directly from proc_est_eur. value_low (and 'review') is populated here,
+    -- so it counts in every sum; it is merely labelled in the UI. annex_suspect uses trusted_native's signing fallback.
     CASE
-      WHEN q.value_flag = 'value_suspect' THEN NULL
+      WHEN q.value_flag = 'value_suspect' THEN q.proc_est_eur
       WHEN COALESCE(q.currency,'BGN') = 'EUR' THEN q.trusted_native
       WHEN COALESCE(q.currency,'BGN') = 'BGN' THEN q.trusted_native / 1.95583
       ELSE q.trusted_native * q.fx_rate
@@ -589,6 +589,7 @@ FROM (
   FROM (
     SELECT y.*,
       CASE y.value_flag
+        WHEN 'value_suspect' THEN y.proc_est_native
         WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
         ELSE COALESCE(y.current_value, y.signing_value)
       END AS display_native,
@@ -618,11 +619,10 @@ FROM (
       FROM (
         SELECT c.*,
           CASE
-            -- Over-valuation + absurd FIRST; only these (and annex_suspect) drop the value from sums.
+            -- Over-valuation + absurd FIRST and repaired to the procedure estimate.
             -- value_low is labelled-but-counted (see the amount_eur CASE). Keep in sync with
             -- normalize-raw.sql and the EOP block below.
-            WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-            WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+            WHEN c.eff_eur > 2000000000 OR (c.proc_est_eur >= 1000 AND c.eff_eur > 200 * c.proc_est_eur) THEN 'value_suspect'
             -- value_low: zero/negative, OR a tiny signed value (< 1000 EUR) that is also < 5% of the
             -- estimate. The < 1000 EUR floor keeps large legitimate framework call-offs OUT.
             WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_low'
@@ -667,10 +667,10 @@ FROM (
                   ORDER BY f.rate_date DESC
                   LIMIT 1
                 )
-              END
-            ), 0) < 0.05 THEN 'value_low'
+            END
+          ), 0) < 0.05 THEN 'value_low'
             WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
-            WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
+            WHEN c.proc_est_eur > 0 AND c.eff_eur >= 10 * c.proc_est_eur THEN 'review'
             ELSE 'ok'
           END AS value_flag,
           CASE
@@ -686,7 +686,39 @@ FROM (
             WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
             ELSE NULL
           END AS bidder_key
-        FROM raw_contracts c
+        FROM (
+          SELECT c.*,
+            CASE
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN COALESCE(c.current_value, c.signing_value)
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN COALESCE(c.current_value, c.signing_value) / 1.95583
+              ELSE COALESCE(c.current_value, c.signing_value) * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = NULLIF(c.currency, '')
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END AS eff_eur,
+            CASE
+              WHEN t.estimated_value IS NULL THEN NULL
+              WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'EUR' THEN t.estimated_value
+              WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'BGN' THEN t.estimated_value / 1.95583
+              ELSE t.estimated_value * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = NULLIF(t.currency, '')
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END AS proc_est_eur,
+            t.estimated_value AS proc_est_native
+          FROM raw_contracts c
+          LEFT JOIN tenders t ON t.id = 't:' || c.unp
+        ) c
         WHERE c.source LIKE 'ocds:%'
       ) z
     ) y
@@ -778,10 +810,10 @@ SELECT
   x.strategic
 FROM (
   SELECT q.*,
-    -- Only value_suspect nulls amount_eur. value_low (and 'review') is populated here, so it counts
-    -- in every sum; it is merely labelled in the UI. annex_suspect uses trusted_native's signing fallback.
+    -- value_suspect is repaired directly from proc_est_eur. value_low (and 'review') is populated here,
+    -- so it counts in every sum; it is merely labelled in the UI. annex_suspect uses trusted_native's signing fallback.
     CASE
-      WHEN q.value_flag = 'value_suspect' THEN NULL
+      WHEN q.value_flag = 'value_suspect' THEN q.proc_est_eur
       WHEN COALESCE(q.currency,'BGN') = 'EUR' THEN q.trusted_native
       WHEN COALESCE(q.currency,'BGN') = 'BGN' THEN q.trusted_native / 1.95583
       ELSE q.trusted_native * q.fx_rate
@@ -801,6 +833,7 @@ FROM (
   FROM (
     SELECT y.*,
       CASE y.value_flag
+        WHEN 'value_suspect' THEN y.proc_est_native
         WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
         ELSE COALESCE(y.current_value, y.signing_value)
       END AS display_native,
@@ -834,11 +867,10 @@ FROM (
             ELSE c.lot_id
           END AS lot_norm,
           CASE
-            -- Over-valuation + absurd FIRST; only these (and annex_suspect) drop the value from sums.
+            -- Over-valuation + absurd FIRST and repaired to the procedure estimate.
             -- value_low is labelled-but-counted (see the amount_eur CASE). Keep in sync with
             -- normalize-raw.sql and the OCDS block above.
-            WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-            WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+            WHEN c.eff_eur > 2000000000 OR (c.proc_est_eur >= 1000 AND c.eff_eur > 200 * c.proc_est_eur) THEN 'value_suspect'
             -- value_low: zero/negative, OR a tiny signed value (< 1000 EUR) that is also < 5% of the
             -- estimate. The < 1000 EUR floor keeps large legitimate framework call-offs OUT.
             WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_low'
@@ -883,10 +915,10 @@ FROM (
                   ORDER BY f.rate_date DESC
                   LIMIT 1
                 )
-              END
-            ), 0) < 0.05 THEN 'value_low'
+            END
+          ), 0) < 0.05 THEN 'value_low'
             WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
-            WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
+            WHEN c.proc_est_eur > 0 AND c.eff_eur >= 10 * c.proc_est_eur THEN 'review'
             ELSE 'ok'
           END AS value_flag,
           CASE
@@ -902,7 +934,39 @@ FROM (
             WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
             ELSE NULL
           END AS bidder_key
-        FROM raw_contracts c
+        FROM (
+          SELECT c.*,
+            CASE
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN COALESCE(c.current_value, c.signing_value)
+              WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN COALESCE(c.current_value, c.signing_value) / 1.95583
+              ELSE COALESCE(c.current_value, c.signing_value) * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = NULLIF(c.currency, '')
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END AS eff_eur,
+            CASE
+              WHEN t.estimated_value IS NULL THEN NULL
+              WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'EUR' THEN t.estimated_value
+              WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'BGN' THEN t.estimated_value / 1.95583
+              ELSE t.estimated_value * (
+                SELECT f.eur_per_unit
+                FROM fx_rates f
+                WHERE f.base_currency = NULLIF(t.currency, '')
+                  AND f.rate_date <= c.contract_date
+                  AND f.rate_date >= date(c.contract_date, '-10 days')
+                ORDER BY f.rate_date DESC
+                LIMIT 1
+              )
+            END AS proc_est_eur,
+            t.estimated_value AS proc_est_native
+          FROM raw_contracts c
+          LEFT JOIN tenders t ON t.id = 't:' || c.unp
+        ) c
         WHERE c.source LIKE 'eop:%'
           AND NOT EXISTS (
             SELECT 1 FROM raw_contracts a
@@ -1013,6 +1077,27 @@ WHERE (id GLOB 'c:[eo]:*' AND EXISTS (
 
 WITH contract_base AS (
   SELECT c.id, c.currency, c.signing_value, c.current_value, c.fx_rate, c.value_flag,
+    te.estimated_value AS proc_est_native,
+    CASE
+      WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN COALESCE(c.current_value, c.signing_value)
+      WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN COALESCE(c.current_value, c.signing_value) / 1.95583
+      WHEN c.fx_rate IS NOT NULL THEN COALESCE(c.current_value, c.signing_value) * c.fx_rate
+      ELSE NULL
+    END AS eff_eur,
+    CASE
+      WHEN te.estimated_value IS NULL THEN NULL
+      WHEN COALESCE(NULLIF(te.currency, ''), 'BGN') = 'EUR' THEN te.estimated_value
+      WHEN COALESCE(NULLIF(te.currency, ''), 'BGN') = 'BGN' THEN te.estimated_value / 1.95583
+      ELSE te.estimated_value * (
+        SELECT f.eur_per_unit
+        FROM fx_rates f
+        WHERE f.base_currency = NULLIF(te.currency, '')
+          AND f.rate_date <= c.signed_at
+          AND f.rate_date >= date(c.signed_at, '-10 days')
+        ORDER BY f.rate_date DESC
+        LIMIT 1
+      )
+    END AS proc_est_eur,
     te.estimated_value AS tender_estimated_value,
     COALESCE((
       SELECT rc.estimated_value
@@ -1046,20 +1131,21 @@ WITH contract_base AS (
         AND a.contract_number = c.contract_number
     )
 ), base AS (
-  SELECT id, currency, signing_value, current_value, fx_rate,
+  SELECT id, currency, signing_value, current_value, fx_rate, proc_est_eur, proc_est_native,
     CASE
       WHEN c.value_flag <> 'annex_suspect'
         AND NOT (c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)))
       THEN c.value_flag
-      WHEN COALESCE(classifier_estimated_value, 0) > 0 AND c.signing_value / classifier_estimated_value >= 100 THEN 'value_suspect'
+      WHEN c.eff_eur > 2000000000 OR (c.proc_est_eur >= 1000 AND c.eff_eur > 200 * c.proc_est_eur) THEN 'value_suspect'
       WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
-      WHEN COALESCE(classifier_estimated_value, 0) > 0 AND COALESCE(c.current_value, c.signing_value) / classifier_estimated_value >= 10 THEN 'review'
+      WHEN c.proc_est_eur > 0 AND c.eff_eur >= 10 * c.proc_est_eur THEN 'review'
       ELSE 'ok'
     END AS new_value_flag
   FROM contract_base c
 ), calc AS (
-  SELECT id, new_value_flag,
+  SELECT id, new_value_flag, proc_est_eur,
     CASE new_value_flag
+      WHEN 'value_suspect' THEN proc_est_native
       WHEN 'annex_suspect' THEN COALESCE(signing_value, current_value)
       ELSE COALESCE(current_value, signing_value)
     END AS display_native,
@@ -1082,6 +1168,7 @@ WITH contract_base AS (
 ), recalculated AS (
   SELECT id, new_value_flag, display_native, trusted_native,
     CASE
+      WHEN new_value_flag = 'value_suspect' THEN proc_est_eur
       WHEN trusted_native IS NULL THEN NULL
       WHEN COALESCE(currency, 'BGN') = 'EUR' THEN trusted_native
       WHEN COALESCE(currency, 'BGN') = 'BGN' THEN trusted_native / 1.95583

@@ -302,8 +302,9 @@ SET ownership_kind = (
 
 -- 5) Contracts — awarded lines (1:1 with staging rows), linked to tender + winning bidder,
 --    with the data-quality verdict (see 0007_data_quality.sql):
---      value_flag = 'value_suspect'  signed value ≥100× estimate, or an absurd headline value with no
---                                    estimate (≥1e10) — untrustworthy, excluded from sums
+--      value_flag = 'value_suspect'  effective value >2bn EUR, or >200× the procedure estimate
+--                                    when that estimate is at least 1000 EUR — repaired to the
+--                                    procedure estimate for sums/display
 --                 | 'value_low'      zero/negative, OR a tiny signed value (< 1000 EUR) that is also
 --                                    < 5% of the estimate. KEPT IN the sums (amount_eur populated) but
 --                                    LABELLED — large legitimate framework call-offs (a small share of
@@ -312,13 +313,14 @@ SET ownership_kind = (
 --                 | 'annex_suspect'  amendment pushed current_value ≥100× signing, or negative →
 --                                    fall back to signing_value, or current_value if signing is
 --                                    missing, so the contract still counts
---                 | 'review'         10–100× estimate (kept, but flagged)
+--                 | 'review'         ≥10× the procedure estimate (kept, but flagged)
 --                 | 'ok'
 --    `amount` is the as-recorded display value (current_value when an annex legitimately raised it,
---    else signing; signing/current fallback for annex_suspect). `amount_eur` is the SAFE-TO-SUM canonical value:
+--    else signing; procedure estimate for value_suspect; signing/current fallback for annex_suspect).
+--    `amount_eur` is the SAFE-TO-SUM canonical value:
 --    BGN→EUR at the fixed peg (÷1.95583), EUR as-is, foreign at the latest prior ECB rate within
---    10 days of signing (fx_rates); NULL for value_suspect and any foreign row missing a bounded
---    prior rate. fx_converted = 1 for foreign rows, and
+--    10 days of signing (fx_rates); value_suspect uses the procedure estimate in EUR, and foreign
+--    rows without a bounded prior rate stay NULL. fx_converted = 1 for foreign rows, and
 --    fx_rate carries the applied rate on the row (amount * fx_rate = amount_eur), so the original value,
 --    the rate, and the EUR value are all auditable without joining fx_rates.
 INSERT OR IGNORE INTO contracts
@@ -354,6 +356,7 @@ SELECT
   x.value_flag,
   x.date_flag,
   CASE
+    WHEN x.value_flag = 'value_suspect' THEN x.proc_est_eur
     WHEN x.trusted_native IS NULL THEN NULL
     WHEN COALESCE(x.currency, 'BGN') = 'EUR' THEN x.trusted_native
     WHEN COALESCE(x.currency, 'BGN') = 'BGN' THEN x.trusted_native / 1.95583
@@ -386,10 +389,11 @@ SELECT
 FROM (
   SELECT y.*,
     CASE y.value_flag
+      WHEN 'value_suspect' THEN y.proc_est_native
       WHEN 'annex_suspect' THEN COALESCE(y.signing_value, y.current_value)
       ELSE COALESCE(y.current_value, y.signing_value)
     END AS display_native,
-    -- Only value_suspect (and annex_suspect, which falls back) is null-valued for sums. value_low and
+    -- value_suspect is repaired directly from proc_est_eur in the outer amount_eur CASE; value_low and
     -- 'review' fall to the populated ELSE branch, so their amount_eur is set, NOT nulled.
     CASE y.value_flag
       WHEN 'value_suspect' THEN NULL
@@ -427,10 +431,9 @@ FROM (
           ELSE c.lot_id
         END AS lot_norm,
         CASE
-          -- Over-valuation + absurd are checked FIRST; only these (and annex_suspect below) drop the
-          -- value from sums. value_low is a labelled-but-counted flag (see the amount_eur CASE).
-          WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-          WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+          -- Over-valuation + absurd are checked FIRST and repaired to the procedure estimate.
+          -- value_low is a labelled-but-counted flag (see the amount_eur CASE).
+          WHEN c.eff_eur > 2000000000 OR (c.proc_est_eur >= 1000 AND c.eff_eur > 200 * c.proc_est_eur) THEN 'value_suspect'
           -- value_low: zero/negative, OR a tiny signed value (< 1000 EUR) that is also < 5% of the
           -- estimate. Large legitimate framework call-offs (small share of a huge ceiling but big in
           -- absolute terms) are NOT caught — the < 1000 EUR floor keeps them OUT of value_low.
@@ -479,7 +482,7 @@ FROM (
             END
           ), 0) < 0.05 THEN 'value_low'
           WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
-          WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
+          WHEN c.proc_est_eur > 0 AND c.eff_eur >= 10 * c.proc_est_eur THEN 'review'
           ELSE 'ok'
         END AS value_flag,
         CASE
@@ -495,7 +498,39 @@ FROM (
           WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
           ELSE NULL
         END AS bidder_key
-      FROM raw_contracts c
+      FROM (
+        SELECT c.*,
+          CASE
+            WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN COALESCE(c.current_value, c.signing_value)
+            WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN COALESCE(c.current_value, c.signing_value) / 1.95583
+            ELSE COALESCE(c.current_value, c.signing_value) * (
+              SELECT f.eur_per_unit
+              FROM fx_rates f
+              WHERE f.base_currency = NULLIF(c.currency, '')
+                AND f.rate_date <= c.contract_date
+                AND f.rate_date >= date(c.contract_date, '-10 days')
+              ORDER BY f.rate_date DESC
+              LIMIT 1
+            )
+          END AS eff_eur,
+          CASE
+            WHEN t.estimated_value IS NULL THEN NULL
+            WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'EUR' THEN t.estimated_value
+            WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'BGN' THEN t.estimated_value / 1.95583
+            ELSE t.estimated_value * (
+              SELECT f.eur_per_unit
+              FROM fx_rates f
+              WHERE f.base_currency = NULLIF(t.currency, '')
+                AND f.rate_date <= c.contract_date
+                AND f.rate_date >= date(c.contract_date, '-10 days')
+              ORDER BY f.rate_date DESC
+              LIMIT 1
+            )
+          END AS proc_est_eur,
+          t.estimated_value AS proc_est_native
+        FROM raw_contracts c
+        LEFT JOIN tenders t ON t.id = 't:' || c.unp
+      ) c
       -- EOP always; an OCDS row only when no EOP row shares its contract_number - EOP wins.
       -- Key is contract_number (the public-procurement contract document number, common to both feeds), NOT unp:
       -- OCDS stores its ocid in unp, which never matches the EOP UNP format. (idx_raw_cnum)
@@ -669,8 +704,7 @@ SELECT
       SELECT c.*,
         CASE
           -- Mirrors the main derive CASE above; value_low is checked AFTER over-valuation + absurd.
-          WHEN c.estimated_value > 0 AND c.signing_value / c.estimated_value >= 100 THEN 'value_suspect'
-          WHEN (c.estimated_value IS NULL OR c.estimated_value = 0) AND COALESCE(c.current_value, c.signing_value) >= 10000000000 THEN 'value_suspect'
+          WHEN c.eff_eur > 2000000000 OR (c.proc_est_eur >= 1000 AND c.eff_eur > 200 * c.proc_est_eur) THEN 'value_suspect'
           WHEN COALESCE(c.current_value, c.signing_value) <= 0 THEN 'value_low'
           WHEN c.estimated_value > 0 AND c.signing_value IS NOT NULL AND (
             CASE
@@ -716,7 +750,7 @@ SELECT
             END
           ), 0) < 0.05 THEN 'value_low'
           WHEN c.current_value IS NOT NULL AND (c.current_value < 0 OR (c.signing_value > 0 AND c.current_value / c.signing_value >= 100)) THEN 'annex_suspect'
-          WHEN c.estimated_value > 0 AND COALESCE(c.current_value, c.signing_value) / c.estimated_value >= 10 THEN 'review'
+          WHEN c.proc_est_eur > 0 AND c.eff_eur >= 10 * c.proc_est_eur THEN 'review'
           ELSE 'ok'
         END AS value_flag,
         CASE
@@ -726,7 +760,39 @@ SELECT
           WHEN c.contractor_name IS NOT NULL AND TRIM(c.contractor_name) <> '' THEN 'name:' || UPPER(TRIM(REPLACE(REPLACE(c.contractor_name, '  ', ' '), '  ', ' ')))
           ELSE NULL
         END AS bidder_key
-      FROM raw_contracts c
+      FROM (
+        SELECT c.*,
+          CASE
+            WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'EUR' THEN COALESCE(c.current_value, c.signing_value)
+            WHEN COALESCE(NULLIF(c.currency, ''), 'BGN') = 'BGN' THEN COALESCE(c.current_value, c.signing_value) / 1.95583
+            ELSE COALESCE(c.current_value, c.signing_value) * (
+              SELECT f.eur_per_unit
+              FROM fx_rates f
+              WHERE f.base_currency = NULLIF(c.currency, '')
+                AND f.rate_date <= c.contract_date
+                AND f.rate_date >= date(c.contract_date, '-10 days')
+              ORDER BY f.rate_date DESC
+              LIMIT 1
+            )
+          END AS eff_eur,
+          CASE
+            WHEN t.estimated_value IS NULL THEN NULL
+            WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'EUR' THEN t.estimated_value
+            WHEN COALESCE(NULLIF(t.currency, ''), 'BGN') = 'BGN' THEN t.estimated_value / 1.95583
+            ELSE t.estimated_value * (
+              SELECT f.eur_per_unit
+              FROM fx_rates f
+              WHERE f.base_currency = NULLIF(t.currency, '')
+                AND f.rate_date <= c.contract_date
+                AND f.rate_date >= date(c.contract_date, '-10 days')
+              ORDER BY f.rate_date DESC
+              LIMIT 1
+            )
+          END AS proc_est_eur,
+          t.estimated_value AS proc_est_native
+        FROM raw_contracts c
+        LEFT JOIN tenders t ON t.id = 't:' || c.unp
+      ) c
       WHERE c.source LIKE 'eop:%'
          OR (c.source LIKE 'ocds:%' AND c.contract_number IS NOT NULL AND NOT EXISTS (
               SELECT 1 FROM raw_contracts a
