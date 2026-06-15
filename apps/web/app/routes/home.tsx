@@ -135,7 +135,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <input
               type="search"
               name="q"
-              placeholder="Институция, компания, ЕИК или № на договор…"
+              placeholder="Институция, компания или договор"
               aria-label="Търсене"
             />
             <button type="submit">Намери</button>

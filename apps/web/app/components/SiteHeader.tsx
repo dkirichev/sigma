@@ -10,7 +10,7 @@ const NAV = [
   { to: '/methodology', label: 'Методология' },
 ];
 
-const PLACEHOLDER = 'Институция, компания, ЕИК или № на договор…';
+const PLACEHOLDER = 'Институция, компания или договор';
 
 // Masthead: serif brand + mono nav + a search drawer that slides below. Ports mocks/v1/assets/site.js
 // (open/close, Esc, click-outside, mobile nav collapse) into React state — no external script, so the

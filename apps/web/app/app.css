@@ -1983,35 +1983,21 @@ details.row .body .signal .why {
   .hero-search {
     grid-template-columns: auto 1fr;
   }
+  /* The 24px desktop serif placeholder cannot fit a phone-width field, so it
+     was clipped mid-phrase. Drop to 16px on mobile so the (shortened)
+     placeholder reads in full down to ~360px while keeping the serif look. */
+  .hero-search::before {
+    font-size: 20px;
+  }
   .hero-search input {
     grid-column: 2 / 3;
+    font-size: 16px;
   }
   .hero-search button {
     grid-column: 1 / -1;
     width: 100%;
     margin-left: 0;
   }
-}
-
-.hero-hints {
-  margin: 0 0 var(--s-5);
-  font: 11px/1.5 var(--font-mono);
-  letter-spacing: 0.04em;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-}
-.hero-hints code {
-  background: transparent;
-  border: 0;
-  padding: 0 var(--s-2) 0 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-mid);
-  letter-spacing: 0.06em;
-}
-.hero-hints code + code::before {
-  content: '· ';
-  color: var(--rule);
 }
 
 /* Mini header for sub-sections — match list-eyebrow */
