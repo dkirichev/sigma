@@ -8,6 +8,7 @@ export default [
   route('network', 'routes/network.tsx'),
   route('trends', 'routes/trends.tsx'),
   route('map', 'routes/map.tsx'),
+  route('competition', 'routes/competition.tsx'),
   route('companies', 'routes/companies.tsx'),
   route('companies.csv', 'routes/companies.csv.tsx'),
   route('companies/:eik', 'routes/company.tsx'),

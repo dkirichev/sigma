@@ -487,6 +487,71 @@ export interface RegionalSpending {
   scope: { sector: string | null; year: number | null; funding: 'all' | 'eu' | 'national' };
 }
 
+// ── Competition ─────────────────────────────────────────────────────────────────────────────────
+// Neutral competition indicators (the /competition page). A high single-offer share or HHI is a
+// weak-competition SIGNAL, never a verdict. See the methodology glossary.
+
+/** Headline numbers for the competition KPI strip. */
+export interface CompetitionTotals {
+  contracts: number; // contracts with a known offer count (the denominator)
+  singleOffer: number; // of those, awarded on a single offer (bids_received = 1)
+  singleOfferShare: number; // 0 to 1, by contract count
+  valueEur: number; // value over known-offer contracts (amount_eur IS NOT NULL, the site-wide basis)
+  singleOfferValueEur: number; // value of the single-offer subset (same basis)
+  singleOfferValueShare: number; // 0 to 1, by value
+}
+
+/** One authority on the single-offer leaderboard. */
+export interface CompetitionAuthority {
+  slug: string;
+  name: string;
+  typeLabel: string | null;
+  contracts: number;
+  singleOffer: number;
+  singleOfferShare: number; // 0 to 1
+  valueEur: number;
+}
+
+/** One authority on the supplier-concentration leaderboard (HHI over its spend per supplier). */
+export interface CompetitionConcentration {
+  slug: string;
+  name: string;
+  typeLabel: string | null;
+  suppliers: number;
+  contracts: number;
+  valueEur: number;
+  hhi: number; // 0 to 1 (1 = one supplier takes everything)
+}
+
+/** A recurring authority/company pairing (many separate contracts between the same two parties). */
+export interface CompetitionPair {
+  rank: number;
+  authoritySlug: string;
+  authorityName: string;
+  bidderSlug: string;
+  /** Cleaned raw name, kept for parity with FlowPair/ContractRow and a future CSV export; the UI renders bidderDisplayName. */
+  bidderName: string;
+  bidderDisplayName: string;
+  bidderKind: EntityKind;
+  contracts: number;
+  wonEur: number;
+}
+
+export interface CompetitionData {
+  totals: CompetitionTotals;
+  bySingleOffer: CompetitionAuthority[];
+  byConcentration: CompetitionConcentration[];
+  topPairs: CompetitionPair[];
+  sectors: SectorRef[]; // options for the sector select
+  scope: {
+    sector: string | null;
+    year: number | null;
+    funding: 'all' | 'eu' | 'national';
+    top: number;
+    minContracts: number;
+  };
+}
+
 // ── Search ──────────────────────────────────────────────────────────────────────────────────────
 
 export interface SearchHit {

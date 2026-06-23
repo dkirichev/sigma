@@ -11,6 +11,7 @@ const NAV = [
   { to: '/network', label: 'Мрежа' },
   { to: '/trends', label: 'Тренд' },
   { to: '/map', label: 'Карта' },
+  { to: '/competition', label: 'Конкуренция' },
   { to: '/methodology', label: 'Методология' },
 ];
 
